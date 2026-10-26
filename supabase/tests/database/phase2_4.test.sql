@@ -7,7 +7,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(54);
+select plan(85);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (as postgres)
@@ -359,6 +359,209 @@ select ok(exists (select 1 from public.a2a_messages where id = 'a7000000-0000-00
   and not exists (select 1 from public.a2a_messages where id = 'a7000000-0000-0000-0000-0000000000a1'),
   'B sees own a2a_messages only');
 
+-- ---------------------------------------------------------------------------
+-- Phase 3: Hidden columns and privileges under authenticated (user A)
+-- ---------------------------------------------------------------------------
+
+set local role authenticated;
+select set_config('request.jwt.claims',
+  '{"sub": "11111111-1111-1111-1111-111111111111", "role": "authenticated"}', true);
+
+select throws_ok($$ select provider_order_id from public.payment_attempts $$, '42501', null, 'payment_attempts.provider_order_id hidden');
+select throws_ok($$ select provider_capture_id from public.payment_attempts $$, '42501', null, 'payment_attempts.provider_capture_id hidden');
+select throws_ok($$ select idempotency_key from public.payment_attempts $$, '42501', null, 'payment_attempts.idempotency_key hidden');
+select throws_ok($$ select nonce from public.approvals $$, '42501', null, 'approvals.nonce hidden');
+select throws_ok($$ select signed_payload_hash from public.approvals $$, '42501', null, 'approvals.signed_payload_hash hidden');
+select throws_ok($$ select provider_mandate_reference from public.mandates $$, '42501', null, 'mandates.provider_mandate_reference hidden');
+select throws_ok($$ select setup_token_reference from public.payment_methods $$, '42501', null, 'payment_methods.setup_token_reference hidden');
+select throws_ok($$ select setup_state_hash from public.payment_methods $$, '42501', null, 'payment_methods.setup_state_hash hidden');
+select throws_ok($$ select * from public.approval_challenges $$, '42501', null, 'approval_challenges not readable');
+select lives_ok($$ select payer_email_masked from public.payment_methods $$, 'payer_email_masked readable');
+
+-- ---------------------------------------------------------------------------
+-- Phase 3: RPCs (as postgres)
+-- ---------------------------------------------------------------------------
+
+reset role;
+
+-- issue_approval_challenge
+select results_eq(
+  $$ select ok, reason, key_version from public.issue_approval_challenge(
+       '00000000-0000-0000-0000-0000000002a6', 'd2000000-0000-0000-0000-0000000000a1',
+       '11111111-1111-1111-1111-111111111111', 1, 'nonce-test-12345678901234567890123456789012',
+       '{"canonical":true}', repeat('1', 64), 3000, 'MYR', now() + interval '2 minutes') $$,
+  $$ values (true, 'issued'::text, 1) $$,
+  'issue_approval_challenge issues challenge');
+
+select results_eq(
+  $$ select ok, reason, key_version from public.issue_approval_challenge(
+       '00000000-0000-0000-0000-0000000002a6', 'd2000000-0000-0000-0000-0000000000a1',
+       '11111111-1111-1111-1111-111111111111', 1, 'nonce-test-fresh1234567890123456789012345678',
+       '{"canonical":true}', repeat('2', 64), 3000, 'MYR', now() + interval '2 minutes') $$,
+  $$ values (true, 'existing'::text, 1) $$,
+  'issue_approval_challenge idempotent returns existing');
+
+select results_eq(
+  $$ select ok, reason from public.issue_approval_challenge(
+       '00000000-0000-0000-0000-0000000002a4', 'd2000000-0000-0000-0000-0000000000a1',
+       '11111111-1111-1111-1111-111111111111', 1, 'nonce-test-exp123456789012345678901234567890',
+       '{"canonical":true}', repeat('3', 64), 1000, 'MYR', now() + interval '2 minutes') $$,
+  $$ values (false, 'quote_expired'::text) $$,
+  'issue_approval_challenge on expired quote transitions order');
+
+-- record_gadget_denial
+insert into public.approval_challenges (
+  id, order_id, device_id, user_id, nonce, canonical_payload,
+  payload_sha256, amount_minor, currency, key_version, expires_at
+) values (
+  'c1000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-0000000002a1',
+  'd2000000-0000-0000-0000-0000000000a1', '11111111-1111-1111-1111-111111111111',
+  'nonce-denial-test123456789012345678901234567', '{"test":1}', repeat('d', 64),
+  1000, 'MYR', 1, now() + interval '5 minutes'
+);
+
+select results_eq(
+  $$ select ok, reason from public.record_gadget_denial(
+       'c1000000-0000-0000-0000-000000000001', 'd2000000-0000-0000-0000-0000000000a1',
+       '11111111-1111-1111-1111-111111111111', 'nonce-denial-test123456789012345678901234567',
+       repeat('d', 64), 1, 'device', 'd2000000-0000-0000-0000-0000000000a1') $$,
+  $$ values (true, 'denied'::text) $$,
+  'record_gadget_denial succeeds');
+
+select is(
+  (select status from public.orders where id = '00000000-0000-0000-0000-0000000002a1'),
+  'DENIED', 'denied order has status DENIED');
+
+select is(
+  (select consumed_at is not null from public.approval_challenges where id = 'c1000000-0000-0000-0000-000000000001'),
+  true, 'denial consumed the challenge');
+
+select results_eq(
+  $$ select decision, consumed_at is null, approved_at is null from public.approvals
+     where order_id = '00000000-0000-0000-0000-0000000002a1' and approval_type = 'gadget' and decision = 'denied' $$,
+  $$ values ('denied'::text, true, true) $$,
+  'denial approvals row has null consumed_at and approved_at');
+
+-- accept_gadget_approval
+insert into public.payment_methods (id, user_id, provider, status, vault_token_reference, payer_email_masked)
+values ('pm000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111',
+        'paypal', 'active', 'vault-token-123', 'a***@example.com')
+on conflict do nothing;
+
+select ok(
+  (select a.ok and a.reason = 'approved' and a.attempt_id is not null from public.accept_gadget_approval(
+     (select id from public.approval_challenges where order_id = '00000000-0000-0000-0000-0000000002a6' limit 1),
+     'd2000000-0000-0000-0000-0000000000a1', '11111111-1111-1111-1111-111111111111',
+     'nonce-test-12345678901234567890123456789012', repeat('1', 64),
+     'MYR', 50000, 'Asia/Kuala_Lumpur', 10000) a),
+  'accept_gadget_approval succeeds');
+
+select is(
+  (select count(*) from public.mandates m where m.order_id = '00000000-0000-0000-0000-0000000002a6'
+     and m.status = 'verified' and m.provider_mandate_reference = repeat('1', 64)),
+  1::bigint, 'verified mandate exists with matching reference');
+
+select is(
+  (select status from public.orders where id = '00000000-0000-0000-0000-0000000002a6'),
+  'PAYMENT_PENDING', 'order is PAYMENT_PENDING after approval');
+
+select results_eq(
+  $$ select ok, reason from public.accept_gadget_approval(
+       (select id from public.approval_challenges where order_id = '00000000-0000-0000-0000-0000000002a6' limit 1),
+       'd2000000-0000-0000-0000-0000000000a1', '11111111-1111-1111-1111-111111111111',
+       'nonce-test-12345678901234567890123456789012', repeat('1', 64),
+       'MYR', 50000, 'Asia/Kuala_Lumpur', 10000) $$,
+  $$ values (false, 'challenge_consumed'::text) $$,
+  'consumed challenge replay fails');
+
+-- Phone threshold & daily limit checks
+insert into public.orders (
+  id, user_id, device_id, merchant_id, currency, subtotal_minor, total_minor,
+  status, idempotency_key, quote_expires_at
+) values (
+  '00000000-0000-0000-0000-000000000299', '11111111-1111-1111-1111-111111111111',
+  'd2000000-0000-0000-0000-0000000000a1',
+  (select id from public.merchants where merchant_code = 'grocer'),
+  'MYR', 10001, 10001, 'AWAITING_APPROVAL', 'p2-k99', now() + interval '1 hour'
+);
+
+insert into public.approval_challenges (
+  id, order_id, device_id, user_id, nonce, canonical_payload,
+  payload_sha256, amount_minor, currency, key_version, expires_at
+) values (
+  'c2000000-0000-0000-0000-000000000099', '00000000-0000-0000-0000-000000000299',
+  'd2000000-0000-0000-0000-0000000000a1', '11111111-1111-1111-1111-111111111111',
+  'nonce-phone-99123456789012345678901234567890', '{"phone":1}', repeat('9', 64),
+  10001, 'MYR', 1, now() + interval '5 minutes'
+);
+
+select results_eq(
+  $$ select ok, reason from public.accept_gadget_approval(
+       'c2000000-0000-0000-0000-000000000099', 'd2000000-0000-0000-0000-0000000000a1',
+       '11111111-1111-1111-1111-111111111111', 'nonce-phone-99123456789012345678901234567890',
+       repeat('9', 64), 'MYR', 50000, 'Asia/Kuala_Lumpur', 10000) $$,
+  $$ values (false, 'phone_approval_required'::text) $$,
+  '10001 rejected with phone_approval_required');
+
+select results_eq(
+  $$ select ok, reason from public.accept_gadget_approval(
+       'c2000000-0000-0000-0000-000000000099', 'd2000000-0000-0000-0000-0000000000a1',
+       '11111111-1111-1111-1111-111111111111', 'nonce-phone-99123456789012345678901234567890',
+       repeat('9', 64), 'MYR', 2000, 'Asia/Kuala_Lumpur', 20000) $$,
+  $$ values (false, 'daily_limit_exceeded'::text) $$,
+  'daily limit exceeded leaves challenge open');
+
+select is(
+  (select consumed_at is null and invalidated_at is null from public.approval_challenges where id = 'c2000000-0000-0000-0000-000000000099'),
+  true, 'challenge stays unconsumed on cap rejection');
+
+-- mark_capture_sent
+insert into public.payment_attempts (id, order_id, provider, status, idempotency_key, amount_minor, currency)
+values ('pa000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000299', 'paypal', 'initiated', 'test-pa-cap', 10001, 'MYR');
+
+select results_eq(
+  $$ select previous is null, send_count from public.mark_capture_sent('pa000000-0000-0000-0000-000000000001') $$,
+  $$ values (true, 1) $$,
+  'first mark_capture_sent returns prev null and count 1');
+
+select results_eq(
+  $$ select previous is not null, send_count from public.mark_capture_sent('pa000000-0000-0000-0000-000000000001') $$,
+  $$ values (true, 2) $$,
+  'second mark_capture_sent returns prev set and count 2');
+
+-- mark_attempt_exhausted
+update public.orders set status = 'PAYMENT_PENDING' where id = '00000000-0000-0000-0000-000000000299';
+
+select results_eq(
+  $$ select ok, order_status from public.mark_attempt_exhausted('pa000000-0000-0000-0000-000000000001') $$,
+  $$ values (true, 'REQUIRES_RECONCILIATION'::text) $$,
+  'mark_attempt_exhausted moves order to REQUIRES_RECONCILIATION');
+
+select is(
+  (select count(*) from public.claim_reconcilable_attempt('00000000-0000-0000-0000-000000000299')),
+  0::bigint, 'exhausted attempt cannot be claimed');
+
+-- revoke_payment_method
+select results_eq(
+  $$ select ok, reason from public.revoke_payment_method('pm000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111') $$,
+  $$ values (true, 'revoked'::text) $$,
+  'revoke_payment_method revokes when no in-flight attempts');
+
+-- apply_payment_result
+insert into public.payment_attempts (id, order_id, provider, status, idempotency_key, amount_minor, currency)
+values ('pa000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-0000000002a6', 'paypal', 'initiated', 'test-pa-apply', 3000, 'MYR');
+
+select results_eq(
+  $$ select ok, reason, new_status from public.apply_payment_result(
+       'pa000000-0000-0000-0000-000000000002', 'uncertain', 'po-1', 'pc-1', 'PENDING', null, 'replay') $$,
+  $$ values (true, 'applied'::text, 'unknown'::text) $$,
+  'apply_payment_result replay uncertain -> unknown');
+
+select is(
+  (select status from public.orders where id = '00000000-0000-0000-0000-0000000002a6'),
+  'REQUIRES_RECONCILIATION', 'uncertain replay sets order to REQUIRES_RECONCILIATION');
+
 reset role;
 select * from finish();
 rollback;
+

@@ -119,3 +119,30 @@ def test_pgtap_uses_new_reserve_spending_signature() -> None:
     assert "50000, 'Asia/Kuala_Lumpur')" in sql
     assert "'test-grocer'" in sql
     assert "'ed25519'" not in sql
+
+
+def test_phase3_migration_content() -> None:
+    p3_file = "20261025090200_phase3_approvals_payments.sql"
+    names = [p.name for p in _new_migrations()]
+    assert p3_file in names
+    sql = (MIGRATIONS / p3_file).read_text(encoding="utf-8")
+    assert "create table public.approval_challenges" in sql
+    assert "create unique index payment_attempts_one_per_order" in sql
+    assert "create unique index payment_methods_one_active_per_user" in sql
+    assert "grant select (payer_email_masked) on public.payment_methods to authenticated;" in sql
+    for fn in [
+        "issue_approval_challenge",
+        "record_gadget_denial",
+        "accept_gadget_approval",
+        "mark_attempt_sent",
+        "mark_capture_sent",
+        "apply_payment_result",
+        "claim_reconcilable_attempts",
+        "claim_reconcilable_attempt",
+        "mark_attempt_exhausted",
+        "activate_payment_method",
+        "revoke_payment_method",
+        "find_payment_method_by_state",
+    ]:
+        assert f"create or replace function public.{fn}" in sql
+

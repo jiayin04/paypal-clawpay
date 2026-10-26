@@ -11,7 +11,8 @@ import logging
 import re
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Request
+import anyio
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
@@ -20,12 +21,13 @@ from app.api.dependencies import (
     ServicesDep,
     bearer_token,
     require_admin_or_user,
+    require_device,
     require_user,
 )
 from app.core.exceptions import ApiError, Forbidden, RateLimited, Unauthorized
 from app.core.security import client_ip
 from app.schemas.devices import UUID_RE, RegisterDeviceRequest, RevokeDeviceResponse
-from app.services.context import AdminContext, UserContext
+from app.services.context import AdminContext, DeviceContext, UserContext
 
 logger = logging.getLogger(__name__)
 
@@ -116,3 +118,62 @@ async def revoke_device(
     return await services.devices.revoke(
         device_id, user_id=caller.user_id, actor_type="user", actor_id=caller.user_id
     )
+
+
+_pending_poll_slots: dict[str, anyio.Event] = {}
+
+
+@router.get("/{device_id}/pending-approvals")
+async def get_pending_approvals(
+    device_id: str,
+    device: Annotated[DeviceContext, Depends(require_device)],
+    request: Request,
+    services: ServicesDep,
+    wait: Annotated[int, Query(ge=0, le=25)] = 25,
+) -> dict[str, Any]:
+    """Long-poll for pending device approval requests (contract §6.4, AC3.10)."""
+    if not _UUID.match(device_id):
+        raise ApiError(404, "not_found", "Device not found.")
+    if device_id.lower() != device.device_id.lower():
+        raise Forbidden("Device mismatch.", code="device_mismatch")
+
+    # Replace existing poll slot for this device
+    old_slot = _pending_poll_slots.get(device_id)
+    new_slot = anyio.Event()
+    _pending_poll_slots[device_id] = new_slot
+    if old_slot is not None:
+        old_slot.set()
+
+    try:
+        elapsed = 0.0
+        while True:
+            if new_slot.is_set():
+                return {"orders": []}
+            if await request.is_disconnected():
+                return {"orders": []}
+
+            orders = await services.repos.orders.list_pending_for_device(device_id)
+            if orders:
+                return {
+                    "orders": [
+                        {
+                            "order_id": o.id,
+                            "created_at": o.created_at.isoformat() if hasattr(o.created_at, "isoformat") else str(o.created_at),
+                        }
+                        for o in orders
+                    ]
+                }
+
+            if elapsed >= wait:
+                break
+
+            step = min(1.0, float(wait) - elapsed)
+            if step <= 0:
+                break
+            await services.clock.sleep(step)
+            elapsed += step
+
+        return {"orders": []}
+    finally:
+        if _pending_poll_slots.get(device_id) is new_slot:
+            _pending_poll_slots.pop(device_id, None)

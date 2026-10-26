@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.api.routes import devices, health, mcp, orders
+from app.api.routes import approvals, devices, health, mcp, orders, payment_methods
 from app.core.config import Settings, get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
@@ -40,9 +40,29 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        # Background reconciler (Phase 3) starts here when start_background and
-        # PayPal is configured. Phase 2 has no background work.
-        yield
+        # Background reconciler (Phase 3): starts when start_background=True and PayPal configured.
+        task: asyncio.Task | None = None
+        if start_background and settings.paypal_client_id:
+            import anyio
+            from anyio import create_task_group
+            tg_ref: list[object] = []
+
+            async def _run_reconciler() -> None:
+                await services.reconciliation.run_forever(interval_seconds=30.0)
+
+            loop = asyncio.get_event_loop()
+            task = loop.create_task(_run_reconciler())
+            logger.info("Background reconciler started")
+        try:
+            yield
+        finally:
+            if task is not None:
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
+                logger.info("Background reconciler stopped")
 
     is_production = settings.app_env == "production"
     app = FastAPI(
@@ -65,6 +85,8 @@ def create_app(
     app.include_router(health.router)
     app.include_router(devices.router)
     app.include_router(orders.router)
+    app.include_router(approvals.router)
+    app.include_router(payment_methods.router)
     if settings.mcp_enabled:
         app.include_router(mcp.router)
     return app

@@ -39,3 +39,39 @@ def sanitize_merchant_name(name: str | None, fallback: str) -> str:
     cleaned = _NAME_DISALLOWED.sub("", name or "")
     cleaned = _SPACES.sub(" ", cleaned).strip()[:MERCHANT_NAME_MAX].strip()
     return cleaned or fallback
+
+
+def build_approval_payload(
+    *,
+    amount_minor: int,
+    cart_sha256: str,
+    currency: str,
+    device_id: str,
+    expires_at: int,
+    key_version: int,
+    merchant_id: str,
+    merchant_name: str,
+    nonce: str,
+    order_id: str,
+) -> bytes:
+    """Build the canonical ASCII approval challenge payload (contracts.md §5)."""
+    payload = {
+        "amount_minor": int(amount_minor),
+        "cart_sha256": str(cart_sha256),
+        "currency": str(currency),
+        "device_id": str(device_id).lower(),
+        "expires_at": int(expires_at),
+        "key_version": int(key_version),
+        "merchant_id": str(merchant_id),
+        "merchant_name": sanitize_merchant_name(merchant_name, fallback=merchant_id),
+        "nonce": str(nonce),
+        "order_id": str(order_id).lower(),
+        "purpose": "clawpay.order_approval.v1",
+    }
+    return canonical_json(payload)
+
+
+def payload_sha256(canonical_bytes: bytes) -> str:
+    """SHA-256 hex digest over canonical approval payload bytes."""
+    return hashlib.sha256(canonical_bytes).hexdigest()
+

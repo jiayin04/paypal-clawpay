@@ -58,7 +58,14 @@ class Harness:
             self.store.add_payment_method(user_id)
         return user_id
 
-    def new_device(self, user_id: str | None = None, *, status: str = "active") -> tuple[str, str, str]:
+    def new_device(
+        self,
+        user_id: str | None = None,
+        *,
+        status: str = "active",
+        public_key: str | None = None,
+        key_version: int = 1,
+    ) -> tuple[str, str, str]:
         """Returns (device_token, device_id, user_id)."""
         user_id = user_id or self.new_user()
         token = generate_device_token()
@@ -68,6 +75,8 @@ class Harness:
             token_hash=hash_token(PEPPER, token),
             llm_token_hash=hash_token(PEPPER, llm),
             status=status,
+            public_key=public_key,
+            key_version=key_version,
         )
         return token, device_id, user_id
 
@@ -100,6 +109,8 @@ def make_harness(
     *,
     store: InMemoryStore | None = None,
     merchant_transports: dict[str, httpx.AsyncBaseTransport] | None = None,
+    paypal_transport: httpx.AsyncBaseTransport | None = None,
+    paypal_gateway: Any = None,
     raise_server_exceptions: bool = True,
     **settings_overrides: Any,
 ) -> Harness:
@@ -114,6 +125,8 @@ def make_harness(
         user_reader=store.user_reader_factory(),
         key_resolver=signer.resolver,
         merchant_transports=merchant_transports,
+        paypal_gateway=paypal_gateway,
+        paypal_transport=paypal_transport,
     )
     app = create_app(settings, services=services, start_background=False)
     client = TestClient(app, raise_server_exceptions=raise_server_exceptions)

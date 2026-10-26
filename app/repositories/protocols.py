@@ -70,6 +70,76 @@ class SpendingSummaryRow:
     reserved_minor: int
 
 
+@dataclass(frozen=True)
+class ApprovalChallengeRecord:
+    id: str
+    order_id: str
+    device_id: str
+    user_id: str
+    nonce: str
+    canonical_payload: str
+    payload_sha256: str
+    amount_minor: int
+    currency: str
+    key_version: int
+    expires_at: datetime
+    consumed_at: datetime | None = None
+    invalidated_at: datetime | None = None
+    created_at: datetime | None = None
+
+
+class ApprovalRepository(Protocol):
+    async def issue_challenge(
+        self,
+        *,
+        order_id: str,
+        device_id: str,
+        user_id: str,
+        key_version: int,
+        nonce: str,
+        canonical: str,
+        payload_sha256: str,
+        amount_minor: int,
+        currency: str,
+        expires_at: datetime,
+    ) -> RpcResult:
+        """RPC issue_approval_challenge -> data {challenge_id, nonce, canonical_payload, expires_at, key_version}."""
+        ...
+
+    async def get_challenge(self, challenge_id: str) -> ApprovalChallengeRecord | None: ...
+
+    async def record_denial(
+        self,
+        *,
+        challenge_id: str,
+        device_id: str,
+        user_id: str,
+        nonce: str,
+        payload_sha256: str,
+        key_version: int,
+        actor_type: str,
+        actor_id: str | None,
+    ) -> RpcResult:
+        """RPC record_gadget_denial -> ok, reason."""
+        ...
+
+    async def accept_approval(
+        self,
+        *,
+        challenge_id: str,
+        device_id: str,
+        user_id: str,
+        nonce: str,
+        payload_sha256: str,
+        policy_currency: str,
+        daily_limit_minor: int,
+        timezone: str,
+        phone_threshold_minor: int,
+    ) -> RpcResult:
+        """RPC accept_gadget_approval -> data {attempt_id, idempotency_key, vault_token_reference}."""
+        ...
+
+
 class DeviceRepository(Protocol):
     async def find_by_token_hash(self, token_hash: str) -> DeviceRecord | None: ...
 
@@ -136,6 +206,8 @@ class OrderRepository(Protocol):
         """RPC cancel_order -> data {order_id, status}."""
         ...
 
+    async def list_pending_for_device(self, device_id: str) -> list[OrderRecord]: ...
+
 
 class SpendingRepository(Protocol):
     async def summary(self, user_id: str, timezone: str) -> SpendingSummaryRow: ...
@@ -143,6 +215,47 @@ class SpendingRepository(Protocol):
 
 class PaymentMethodRepository(Protocol):
     async def has_active(self, user_id: str) -> bool: ...
+
+    async def list_active(self, user_id: str) -> list[dict[str, Any]]: ...
+
+    async def get_by_id(self, payment_method_id: str, user_id: str) -> dict[str, Any] | None: ...
+
+    async def create_pending(
+        self,
+        *,
+        user_id: str,
+        state_token: str,
+        state_expires_at: datetime,
+    ) -> str:
+        """Insert a pending payment_method row and return its id."""
+        ...
+
+    async def activate_payment_method(
+        self,
+        *,
+        payment_method_id: str,
+        user_id: str,
+        vault_token_reference: str,
+        payer_email_masked: str | None,
+    ) -> RpcResult:
+        """RPC activate_payment_method -> ok, reason (23505 -> conflict retry)."""
+        ...
+
+    async def revoke_payment_method(
+        self,
+        *,
+        payment_method_id: str,
+        user_id: str,
+    ) -> RpcResult:
+        """RPC revoke_payment_method -> ok, reason (payment_in_progress)."""
+        ...
+
+    async def find_by_state(
+        self,
+        state_token: str,
+    ) -> dict[str, Any] | None:
+        """Look up pending payment_method by state token (single-use, deletes on find)."""
+        ...
 
 
 class ConversationRepository(Protocol):
@@ -181,3 +294,60 @@ class UserScopedReader(Protocol):
 
 class UserScopedReaderFactory(Protocol):
     def __call__(self, jwt: str) -> AbstractAsyncContextManager[UserScopedReader]: ...
+
+
+@dataclass(frozen=True)
+class PaymentAttemptRecord:
+    id: str
+    order_id: str
+    user_id: str
+    payment_method_id: str | None
+    provider: str
+    status: str
+    idempotency_key: str
+    amount_minor: int
+    currency: str
+    provider_order_id: str | None
+    provider_capture_id: str | None
+    provider_status: str | None
+    failure_code: str | None
+    claimed_until: datetime | None
+    first_sent_at: datetime | None
+    capture_sent_at: datetime | None
+    capture_send_count: int
+    vault_token_reference: str | None
+    completed_at: datetime | None
+    exhausted_at: datetime | None
+    created_at: datetime
+
+
+class PaymentRepository(Protocol):
+    async def get_attempt(self, attempt_id: str) -> PaymentAttemptRecord | None: ...
+
+    async def get_attempt_for_order(self, order_id: str) -> PaymentAttemptRecord | None: ...
+
+    async def mark_attempt_sent(self, attempt_id: str) -> datetime | None: ...
+
+    async def mark_capture_sent(self, attempt_id: str) -> tuple[datetime | None, int]: ...
+
+    async def apply_payment_result(
+        self,
+        *,
+        attempt_id: str,
+        classification: str,
+        provider_order_id: str | None = None,
+        provider_capture_id: str | None = None,
+        provider_status: str | None = None,
+        failure_code: str | None = None,
+        source: str,
+    ) -> RpcResult: ...
+
+    async def mark_attempt_exhausted(self, attempt_id: str) -> RpcResult: ...
+
+    async def claim_reconcilable_attempts(
+        self, limit: int = 20, lease_seconds: int = 60
+    ) -> list[PaymentAttemptRecord]: ...
+
+    async def claim_reconcilable_attempt(
+        self, order_id: str, lease_seconds: int = 60
+    ) -> PaymentAttemptRecord | None: ...

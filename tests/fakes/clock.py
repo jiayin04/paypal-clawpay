@@ -17,3 +17,8 @@ class FakeClock:
     def advance(self, seconds: float) -> None:
         self.now = self.now + timedelta(seconds=seconds)
         self._mono += seconds
+
+    async def sleep(self, seconds: float) -> None:
+        self.advance(seconds)
+        import anyio
+        await anyio.sleep(0)

@@ -21,21 +21,28 @@ from app.integrations.supabase import client as supabase_client
 from app.repositories import supabase_repos as repos_mod
 from app.repositories.protocols import (
     A2AMessageRepository,
+    ApprovalRepository,
     AuditRepository,
     ConversationRepository,
     DeviceRepository,
     MerchantRepository,
     OrderRepository,
     PaymentMethodRepository,
+    PaymentRepository,
     SpendingRepository,
 )
+from app.integrations.paypal import PayPalClient, PayPalGateway, PayPalService
 from app.repositories.user_scoped import make_user_reader_factory
+from app.services.approval_service import ApprovalService
 from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService, KeyResolver
 from app.services.conversation_service import ConversationService
 from app.services.device_service import DeviceService
 from app.services.merchant_service import MerchantService
 from app.services.order_service import OrderService
+from app.services.payment_method_service import PaymentMethodService
+from app.services.payment_service import PaymentService
+from app.services.reconciliation_service import ReconciliationService
 from app.services.spending_service import SpendingService
 
 REGISTER_FAILURES_PER_MINUTE = 10
@@ -51,6 +58,8 @@ class Repositories:
     conversations: ConversationRepository
     a2a_messages: A2AMessageRepository
     audit: AuditRepository
+    approvals: ApprovalRepository
+    payments: PaymentRepository
 
 
 @dataclass
@@ -76,6 +85,11 @@ class Services:
     orders: OrderService
     spending: SpendingService
     conversations: ConversationService
+    approvals: ApprovalService
+    payments: PaymentService
+    payment_methods: PaymentMethodService
+    reconciliation: ReconciliationService
+    paypal: PayPalGateway
     limiters: Limiters
 
 
@@ -105,6 +119,8 @@ def supabase_repositories(settings: Settings) -> Repositories:
         conversations=repos_mod.SupabaseConversationRepository(provider),
         a2a_messages=repos_mod.SupabaseInsertRepository(provider, "a2a_messages"),
         audit=repos_mod.SupabaseInsertRepository(provider, "audit_logs"),
+        approvals=repos_mod.SupabaseApprovalRepository(provider),
+        payments=repos_mod.SupabasePaymentRepository(provider),
     )
 
 
@@ -116,12 +132,18 @@ def build_services(
     user_reader: Callable[[str], Any] | None = None,
     key_resolver: KeyResolver | None = None,
     merchant_transports: Mapping[str, httpx.AsyncBaseTransport] | None = None,
+    paypal_gateway: PayPalGateway | None = None,
+    paypal_transport: httpx.AsyncBaseTransport | None = None,
 ) -> Services:
     clock = clock or SystemClock()
     repos = repos or supabase_repositories(settings)
     audit = AuditService(repos.audit)
     spending = SpendingService(settings, repos.spending)
     merchants = MerchantService(settings, clock, audit, repos.a2a_messages, merchant_transports)
+    if paypal_gateway is None:
+        paypal_client = PayPalClient(settings, transport=paypal_transport)
+        paypal_gateway = PayPalService(paypal_client)
+    payments = PaymentService(settings, clock, repos.payments, repos.orders, paypal_gateway)
     mono = clock.monotonic
     limiters = Limiters(
         auth_failures=SlidingWindowLimiter(settings.auth_failures_per_minute, 60, monotonic=mono),
@@ -130,6 +152,19 @@ def build_services(
         mcp_tool_calls=SlidingWindowLimiter(settings.mcp_tool_calls_per_minute, 60, monotonic=mono),
         device_requests=SlidingWindowLimiter(settings.device_requests_per_minute, 60, monotonic=mono),
         revoked_token_audit=SlidingWindowLimiter(1, 60, monotonic=mono),
+    )
+    reconciliation = ReconciliationService(
+        clock=clock,
+        payment_repo=repos.payments,
+        order_repo=repos.orders,
+        paypal=paypal_gateway,
+        payment_service=payments,
+    )
+    payment_method_svc = PaymentMethodService(
+        settings=settings,
+        clock=clock,
+        payment_methods=repos.payment_methods,
+        paypal=paypal_gateway,
     )
     return Services(
         settings=settings,
@@ -141,9 +176,17 @@ def build_services(
         devices=DeviceService(settings, repos.devices),
         merchants=merchants,
         orders=OrderService(
-            settings, clock, repos.orders, repos.merchants, repos.payment_methods, spending, merchants
+            settings, clock, repos.orders, repos.merchants, repos.payment_methods, spending, merchants,
+            payment_repo=repos.payments, payment_service=payments,
         ),
         spending=spending,
         conversations=ConversationService(settings, clock, repos.conversations),
+        approvals=ApprovalService(
+            settings, clock, repos.approvals, repos.orders, payment_service=payments, payment_repo=repos.payments
+        ),
+        payments=payments,
+        payment_methods=payment_method_svc,
+        reconciliation=reconciliation,
+        paypal=paypal_gateway,
         limiters=limiters,
     )

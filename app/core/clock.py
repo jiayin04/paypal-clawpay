@@ -12,6 +12,8 @@ class Clock(Protocol):
 
     def monotonic(self) -> float: ...
 
+    async def sleep(self, seconds: float) -> None: ...
+
 
 class SystemClock:
     def utc_now(self) -> datetime:
@@ -19,3 +21,7 @@ class SystemClock:
 
     def monotonic(self) -> float:
         return time.monotonic()
+
+    async def sleep(self, seconds: float) -> None:
+        import anyio
+        await anyio.sleep(seconds)

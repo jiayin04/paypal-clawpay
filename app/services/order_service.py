@@ -26,6 +26,7 @@ from app.repositories.protocols import (
     OrderRecord,
     OrderRepository,
     PaymentMethodRepository,
+    PaymentRepository,
 )
 from app.services.context import DeviceContext
 from app.services.errors import ToolError
@@ -82,6 +83,8 @@ class OrderService:
         payment_methods: PaymentMethodRepository,
         spending: SpendingService,
         merchant_service: MerchantService,
+        payment_repo: PaymentRepository | None = None,
+        payment_service: object | None = None,  # PaymentService – imported lazily to avoid cycle
     ) -> None:
         self._settings = settings
         self._clock = clock
@@ -90,6 +93,8 @@ class OrderService:
         self._payment_methods = payment_methods
         self._spending = spending
         self._merchant_service = merchant_service
+        self._payment_repo = payment_repo
+        self._payment_service = payment_service
 
     # -- create_order ----------------------------------------------------------------
 
@@ -242,15 +247,43 @@ class OrderService:
             logger.error("get_order_status DB failure: %s", type(exc).__name__)
             raise ToolError("internal_error") from None
         api_status = to_api_status(status)
+
+        # Trigger on-demand reconcile for pending/uncertain statuses (§3.9)
+        paypal_status: str | None = None
+        paid_at: str | None = None
+        approved_at: str | None = None
+        if api_status in ("payment_pending", "requires_reconciliation") and self._payment_service is not None:
+            try:
+                await self._payment_service.reconcile_order(order_id)  # type: ignore[union-attr]
+            except Exception as exc:
+                logger.warning("on-demand reconcile failed for %s: %s", order_id, exc)
+            # Reload order after potential reconcile
+            try:
+                refreshed = await self._orders.get_for_user(order_id, device.user_id)
+                if refreshed is not None:
+                    status = await self._expire_if_needed(refreshed)
+                    api_status = to_api_status(status)
+            except Exception:
+                pass
+
+        # Fill payment details from the latest attempt if available
+        if self._payment_repo is not None:
+            try:
+                att = await self._payment_repo.get_attempt_for_order(order_id)
+                if att:
+                    paypal_status = att.provider_status
+                    paid_at = iso_z(att.completed_at)
+            except Exception:
+                pass
+
         return {
             "order_id": order.id,
             "status": api_status,
-            # Payment attempts arrive in Phase 3; until then there is no provider status.
-            "paypal_status": None,
+            "paypal_status": paypal_status,
             "total": format_display(order.total_minor, order.currency),
             "currency": order.currency,
-            "approved_at": None,
-            "paid_at": None,
+            "approved_at": approved_at,
+            "paid_at": paid_at,
             "message": STATUS_MESSAGES.get(api_status, ""),
         }
 
