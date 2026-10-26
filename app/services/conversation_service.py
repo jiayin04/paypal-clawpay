@@ -12,8 +12,9 @@ from typing import Any
 
 from app.core.clock import Clock
 from app.core.config import Settings
-from app.repositories.protocols import ConversationRepository
+from app.repositories.ports.events import ConversationRepository
 from app.services.context import DeviceContext
+
 
 logger = logging.getLogger(__name__)
 

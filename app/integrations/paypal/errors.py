@@ -5,8 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
-import httpx
-
 from app.integrations.paypal.models import ProviderOrder
 
 
@@ -41,7 +39,7 @@ class PayPalApiError(PayPalError):
         self.details = details or []
 
 
-ClassificationStatus = Literal["completed", "pending", "failed", "uncertain", "capture_needed"]
+ClassificationStatus = Literal["completed", "pending", "failed", "uncertain", "capture_needed", "no_result"]
 
 
 @dataclass(frozen=True)
@@ -57,179 +55,36 @@ class PaymentClassification:
 
 
 def classify(outcome: Any, source: str, attempt: Any = None) -> PaymentClassification:
-    """Classify PayPal response or exception into completed, pending, failed, uncertain, or capture_needed.
-
-    Governed by the three tables in contracts.md §3.7:
-    - Table 1: 2xx outcomes
-    - Table 2: 4xx/5xx PayPalApiError outcomes
-    - Table 3: Exception outcomes (timeouts, network, unavailable)
-    Also validates captured amount and currency against attempt if provided.
-    """
-    # -----------------------------------------------------------------------
-    # Table 1: 2xx HTTP response represented as ProviderOrder
-    # -----------------------------------------------------------------------
+    # Legacy aliases are retained for callers outside the payment executor.
+    source = {"create": "first_create", "capture_response": "first_create"}.get(source, source)
+    def value(name):
+        return attempt.get(name) if isinstance(attempt, dict) else getattr(attempt, name, None)
     if isinstance(outcome, ProviderOrder):
-        order_id = outcome.id
-        cap_id = outcome.capture_id
-        cap_status = outcome.capture_status
-
-        # 1. Capture COMPLETED: check captured amount and currency
-        if cap_status == "COMPLETED":
+        common = dict(provider_order_id=outcome.id, provider_capture_id=outcome.capture_id,
+                      provider_status=outcome.capture_status or outcome.status)
+        if outcome.capture_status in ("COMPLETED", "REFUNDED", "PARTIALLY_REFUNDED"):
             if attempt is not None:
-                exp_amount = getattr(attempt, "amount_minor", None)
-                if exp_amount is None and isinstance(attempt, dict):
-                    exp_amount = attempt.get("amount_minor")
-
-                exp_curr = getattr(attempt, "currency", None)
-                if exp_curr is None and isinstance(attempt, dict):
-                    exp_curr = attempt.get("currency")
-
-                if (
-                    exp_amount is not None
-                    and outcome.capture_amount_minor is not None
-                    and exp_amount != outcome.capture_amount_minor
-                ):
-                    return PaymentClassification(
-                        status="uncertain",
-                        provider_order_id=order_id,
-                        provider_capture_id=cap_id,
-                        provider_status="amount_mismatch",
-                        failure_code="amount_mismatch",
-                        reason=f"Captured amount {outcome.capture_amount_minor} != expected {exp_amount}",
-                    )
-
-                if (
-                    exp_curr is not None
-                    and outcome.capture_currency is not None
-                    and exp_curr != outcome.capture_currency
-                ):
-                    return PaymentClassification(
-                        status="uncertain",
-                        provider_order_id=order_id,
-                        provider_capture_id=cap_id,
-                        provider_status="currency_mismatch",
-                        failure_code="currency_mismatch",
-                        reason=f"Captured currency {outcome.capture_currency} != expected {exp_curr}",
-                    )
-
-            return PaymentClassification(
-                status="completed",
-                provider_order_id=order_id,
-                provider_capture_id=cap_id,
-                provider_status="COMPLETED",
-            )
-
-        # 2. Capture PENDING
-        if cap_status == "PENDING":
-            return PaymentClassification(
-                status="pending",
-                provider_order_id=order_id,
-                provider_capture_id=cap_id,
-                provider_status="PENDING",
-            )
-
-        # 3. Capture DECLINED or FAILED
-        if cap_status in ("DECLINED", "FAILED"):
-            failure_code = outcome.capture_status_reason or cap_status
-            return PaymentClassification(
-                status="failed",
-                provider_order_id=order_id,
-                provider_capture_id=cap_id,
-                provider_status=cap_status,
-                failure_code=failure_code,
-            )
-
-        # 4. Order status PAYER_ACTION_REQUIRED (vault token unusable without buyer)
+                from app.domain.money import to_paypal_value
+                raw_mismatch = outcome.capture_amount_value is not None and outcome.capture_amount_value != to_paypal_value(value("amount_minor"),value("currency"))
+                if raw_mismatch or outcome.capture_amount_minor is None or outcome.capture_amount_minor != value("amount_minor"):
+                    return PaymentClassification("uncertain", **{**common, "provider_status": "amount_mismatch"}, failure_code="amount_mismatch")
+                if outcome.capture_currency is None or outcome.capture_currency != value("currency"):
+                    return PaymentClassification("uncertain", **{**common, "provider_status": "currency_mismatch"}, failure_code="currency_mismatch")
+            return PaymentClassification("completed", **common)
+        if outcome.capture_status == "PENDING":
+            return PaymentClassification("pending", **common)
+        if outcome.capture_status in ("DECLINED", "FAILED", "DENIED"):
+            return PaymentClassification("failed", **common, failure_code=outcome.capture_status_reason or outcome.capture_status)
         if outcome.status == "PAYER_ACTION_REQUIRED":
-            return PaymentClassification(
-                status="failed",
-                provider_order_id=order_id,
-                provider_status="PAYER_ACTION_REQUIRED",
-                failure_code="payer_action_required",
-            )
-
-        # 5. Order status VOIDED
-        if outcome.status == "VOIDED":
-            return PaymentClassification(
-                status="failed",
-                provider_order_id=order_id,
-                provider_status="VOIDED",
-                failure_code="voided",
-            )
-
-        # 6. Order CREATED or APPROVED without a capture
-        if outcome.status in ("CREATED", "APPROVED") and cap_id is None:
-            if source == "create":
-                return PaymentClassification(
-                    status="capture_needed",
-                    provider_order_id=order_id,
-                    provider_status=outcome.status,
-                )
-            return PaymentClassification(
-                status="pending",
-                provider_order_id=order_id,
-                provider_status=outcome.status,
-            )
-
-        # Catch-all for other 2xx order statuses
-        return PaymentClassification(
-            status="pending",
-            provider_order_id=order_id,
-            provider_status=outcome.status,
-        )
-
-    # -----------------------------------------------------------------------
-    # Table 2: 4xx/5xx API Errors
-    # -----------------------------------------------------------------------
+            return PaymentClassification("failed", **common, failure_code="payer_action_required")
+        if outcome.status == "APPROVED" and outcome.capture_id is None:
+            return PaymentClassification("capture_needed", **common)
+        return PaymentClassification("uncertain", **common)
     if isinstance(outcome, PayPalApiError):
-        # 422 Unprocessable Entity
-        if outcome.status == 422:
-            # Exception: DUPLICATE_INVOICE_ID is uncertain (previous call may have charged)
-            if outcome.issue == "DUPLICATE_INVOICE_ID" or outcome.name == "DUPLICATE_INVOICE_ID":
-                return PaymentClassification(
-                    status="uncertain",
-                    provider_status="DUPLICATE_INVOICE_ID",
-                    failure_code="DUPLICATE_INVOICE_ID",
-                )
-            code = outcome.issue or outcome.name
-            return PaymentClassification(
-                status="failed",
-                provider_status=outcome.name,
-                failure_code=code,
-            )
-
-        # 400, 401, 403: definitive client failure
-        if outcome.status in (400, 401, 403):
-            code = outcome.issue or outcome.name
-            return PaymentClassification(
-                status="failed",
-                provider_status=outcome.name,
-                failure_code=code,
-            )
-
-        # 409, 429, 5xx: uncertain
-        if outcome.status in (409, 429) or outcome.status >= 500:
-            return PaymentClassification(
-                status="uncertain",
-                provider_status=str(outcome.status),
-                failure_code=outcome.name,
-            )
-
-        # 404: on query/get, uncertain whether order was created
-        if outcome.status == 404:
-            return PaymentClassification(
-                status="uncertain",
-                provider_status="404",
-                failure_code="not_found",
-            )
-
-    # -----------------------------------------------------------------------
-    # Table 3: Timeouts, Network Errors, and Unhandled Exceptions
-    # -----------------------------------------------------------------------
-    if isinstance(outcome, (httpx.TimeoutException, PayPalUnavailable, httpx.NetworkError, Exception)):
-        return PaymentClassification(
-            status="uncertain",
-            failure_code=type(outcome).__name__,
-        )
-
-    return PaymentClassification(status="uncertain", failure_code="unknown_outcome")
+        code = outcome.issue or outcome.name
+        if source == "poll":
+            return PaymentClassification("no_result")
+        if source == "first_create" and outcome.status in (400,401,403,422) and code not in ("DUPLICATE_INVOICE_ID", "ORDER_ALREADY_CAPTURED"):
+            return PaymentClassification("failed", provider_status=outcome.name, failure_code=code)
+        return PaymentClassification("uncertain", provider_status=outcome.name, failure_code=code)
+    return PaymentClassification("no_result" if source == "poll" else "uncertain", failure_code=type(outcome).__name__)

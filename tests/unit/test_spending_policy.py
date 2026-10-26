@@ -15,10 +15,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-import pytest
 
-from app.core.config import Settings
-from app.services.spending_service import SpendingService
 from tests.fakes.app import make_harness
 from tests.fakes.clock import FakeClock
 from tests.fakes.store import InMemoryStore

@@ -5,14 +5,20 @@ from __future__ import annotations
 import re
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Request
+from pydantic import ValidationError
 
+from app.api.body import read_limited_body
 from app.api.dependencies import ServicesDep, require_device
 from app.core.exceptions import ApiError
-from app.schemas.approvals import ApprovalChallengeResponse, GadgetApprovalRequest, GadgetApprovalResponse
+from app.schemas.approvals import (
+    ApprovalChallengeResponse,
+    GadgetApprovalRequest,
+    GadgetApprovalResponse,
+)
 from app.schemas.devices import UUID_RE
 from app.services.context import DeviceContext
-from app.services.order_service import OrderService
+
 
 router = APIRouter(prefix="/api/v1/orders", tags=["approvals"])
 
@@ -66,12 +72,17 @@ async def get_approval_challenge(
 @router.post("/{order_id}/gadget-approval", response_model=GadgetApprovalResponse)
 async def submit_gadget_approval(
     order_id: str,
-    body: GadgetApprovalRequest,
+    request: Request,
     device: Annotated[DeviceContext, Depends(require_device)],
     services: ServicesDep,
 ) -> Any:
     """§3.3: Verify gadget signature and record approval/denial."""
     order_id = _order_id(order_id)
+    raw = await read_limited_body(request,16*1024)
+    try:
+        body = GadgetApprovalRequest.model_validate_json(raw)
+    except ValidationError:
+        raise ApiError(422,"validation_error","Invalid approval request.") from None
     return await services.approvals.submit_gadget_approval(
         device, order_id, body.model_dump()
     )

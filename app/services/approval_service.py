@@ -2,7 +2,7 @@
 
 Phase 3.2: issue_challenge
 Phase 3.3: submit_gadget_approval (ECDSA verify + RPC)
-Phase 3.5 hook: inline payment call (no-op until payment_service is wired).
+Inline execution uses the persisted approval lease and a bounded PayPal budget.
 """
 
 from __future__ import annotations
@@ -21,9 +21,11 @@ from app.core.clock import Clock
 from app.core.config import Settings
 from app.core.exceptions import ApiError, Conflict, Forbidden, Gone
 from app.domain.canonical import build_approval_payload, payload_sha256
-from app.repositories.errors import RepositoryError
-from app.repositories.protocols import ApprovalRepository, OrderRepository
+from app.repositories.errors import RepositoryError, RpcRetryRepository
+from app.repositories.ports.approvals import ApprovalRepository
+from app.repositories.ports.orders import OrderRepository
 from app.services.context import DeviceContext
+
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +37,7 @@ def _b64url_decode(value: str) -> bytes:
     """Base64url-decode; re-pad and use strict alphabet."""
     pad = "=" * (-len(value) % 4)
     try:
-        return base64.urlsafe_b64decode(value + pad)
+        return base64.b64decode(value + pad,altchars=b"-_",validate=True)
     except Exception as exc:
         raise ValueError(f"base64url decode failed: {exc}") from exc
 
@@ -54,10 +56,12 @@ class ApprovalService:
         orders: OrderRepository,
         payment_service: Any = None,
         payment_repo: Any = None,
+        audit: Any = None,
     ) -> None:
         self._settings = settings
         self._clock = clock
-        self._approvals = approvals
+        self._approvals = RpcRetryRepository(approvals)
+        self._audit = audit
         self._orders = orders
         self._payment_service = payment_service
         self._payment_repo = payment_repo
@@ -182,21 +186,21 @@ class ApprovalService:
         # 2-6: read challenge (pre-check, no lock)
         challenge = await self._approvals.get_challenge(challenge_id)
         if challenge is None or challenge.order_id != order_id or challenge.device_id != device.device_id:
-            self._audit_approval(device, "approval.challenge_not_found", order_id)
+            await self._audit_approval(device, "approval.challenge_not_found", order_id)
             raise ApiError(404, "challenge_not_found", "Challenge not found.")
         if challenge.consumed_at is not None or challenge.invalidated_at is not None:
-            self._audit_approval(device, "approval.replay_rejected", order_id)
+            await self._audit_approval(device, "approval.replay_rejected", order_id)
             raise Conflict("challenge_consumed", "Challenge already consumed.")
         now = self._clock.utc_now()
         if challenge.expires_at is not None and challenge.expires_at <= now:
-            self._audit_approval(device, "approval.challenge_expired", order_id)
+            await self._audit_approval(device, "approval.challenge_expired", order_id)
             raise Gone("challenge_expired", "Challenge has expired.")
         if key_version != challenge.key_version or key_version != device.key_version:
-            self._audit_approval(device, "approval.key_version_mismatch", order_id)
+            await self._audit_approval(device, "approval.key_version_mismatch", order_id)
             raise Conflict("key_version_mismatch", "Key version mismatch.")
         import hmac as _hmac
         if not _hmac.compare_digest(nonce, challenge.nonce):
-            self._audit_approval(device, "approval.replay_rejected", order_id)
+            await self._audit_approval(device, "approval.replay_rejected", order_id)
             raise Conflict("nonce_mismatch", "Nonce mismatch.")
 
         # 7-8: signature verification (approved only)
@@ -228,7 +232,7 @@ class ApprovalService:
                 raise
             except Exception as exc:
                 logger.info("Signature verification failed: %s", type(exc).__name__)
-                self._audit_approval(device, "approval.signature_failed", order_id)
+                await self._audit_approval(device, "approval.signature_failed", order_id)
                 raise ApiError(422, "signature_invalid", "Signature verification failed.")
 
         # Atomic RPC
@@ -303,9 +307,10 @@ class ApprovalService:
             "message": "Approved. Payment is processing.",
         }
 
-    def _audit_approval(self, device: DeviceContext, event: str, order_id: str) -> None:
+    async def _audit_approval(self, device: DeviceContext, event: str, order_id: str) -> None:
         """Best-effort local audit log; the RPC logs its own audit inside the DB."""
-        logger.info("approval_audit event=%s device=%s order=%s", event, device.device_id, order_id)
+        if self._audit is not None:
+            await self._audit.record(event,actor_type="device",actor_id=device.device_id,user_id=device.user_id,entity_type="order",entity_id=order_id)
 
     def _map_rpc_error(self, reason: str) -> dict[str, Any]:
         """Map RPC failure reasons to HTTP errors (design §3.3 tables)."""

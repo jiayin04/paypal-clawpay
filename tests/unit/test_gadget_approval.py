@@ -15,50 +15,18 @@ Covers:
 
 from __future__ import annotations
 
-import base64
-from typing import Any
 from uuid import uuid4
 
 import anyio
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec
-import pytest
 
-from tests.fakes.app import Harness, make_harness, tool_payload
+from tests.fakes.app import make_harness
+from tests.fakes.approvals import generate_p256 as _generate_p256, create_order as _create_order, get_challenge as _get_challenge, sign_canonical as _sign_canonical
 
 MILK2 = {"merchant_id": "grocer", "items": [{"sku": "GRC-MILK-1L", "qty": 2}]}
 
 
-def _generate_p256() -> tuple[ec.EllipticCurvePrivateKey, str]:
-    """Generate in-memory P-256 key pair and return (private_key, public_pem)."""
-    priv = ec.generate_private_key(ec.SECP256R1())
-    pub_pem = priv.public_key().public_bytes(
-        serialization.Encoding.PEM,
-        serialization.PublicFormat.SubjectPublicKeyInfo,
-    ).decode("ascii")
-    return priv, pub_pem
 
 
-def _create_order(h: Harness, token: str, payload: dict[str, Any] = MILK2) -> str:
-    """Create an order via MCP tool and return its order_id."""
-    _, out = tool_payload(h.call_tool(token, "create_order", payload))
-    return out["order_id"]
-
-
-def _get_challenge(h: Harness, token: str, order_id: str) -> dict[str, Any]:
-    """GET /api/v1/orders/{order_id}/approval-challenge."""
-    r = h.client.get(
-        f"/api/v1/orders/{order_id}/approval-challenge",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert r.status_code == 200, r.text
-    return r.json()
-
-
-def _sign_canonical(priv_key: ec.EllipticCurvePrivateKey, canonical_text: str) -> str:
-    """Sign canonical_text with ECDSA P-256 SHA-256 and return base64url-DER without padding."""
-    der = priv_key.sign(canonical_text.encode("ascii"), ec.ECDSA(hashes.SHA256()))
-    return base64.urlsafe_b64encode(der).rstrip(b"=").decode("ascii")
 
 
 # ---------------------------------------------------------------------------
@@ -755,3 +723,15 @@ def test_concurrent_revoke_vs_approve_race() -> None:
     assert revoke_status == [200]
     # Approval either succeeds (200) before revocation, or fails (401/403)
     assert approval_status[0] in (200, 401, 403)
+
+
+def test_signature_failure_is_persisted_in_audit():
+    priv,pem=_generate_p256()
+    h=make_harness(); token,did,uid=h.new_device(public_key=pem)
+    oid=_create_order(h,token); ch=_get_challenge(h,token,oid)
+    bad,_=_generate_p256()
+    r=h.client.post(f'/api/v1/orders/{oid}/gadget-approval',headers={'Authorization':'Bearer '+token},json={
+        'challenge_id':ch['challenge_id'],'device_id':did,'key_version':1,'nonce':ch['nonce'],
+        'decision':'approved','signature':_sign_canonical(bad,ch['canonical'])})
+    assert r.status_code==422
+    assert h.store.audit_events('approval.signature_failed')

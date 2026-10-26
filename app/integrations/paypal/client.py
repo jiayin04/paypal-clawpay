@@ -10,11 +10,8 @@ from typing import Any, Mapping
 import httpx
 
 from app.core.config import Settings
-from app.integrations.paypal.errors import (
-    PayPalApiError,
-    PayPalAuthError,
-    PayPalUnavailable,
-)
+from app.integrations.paypal.errors import PayPalApiError, PayPalAuthError, PayPalUnavailable
+
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +101,8 @@ class PayPalClient:
             if resp.status_code != 200:
                 debug_id = resp.headers.get("PayPal-Debug-Id") or resp.headers.get("paypal-debug-id")
                 logger.warning("PayPal OAuth failed status=%d debug_id=%s", resp.status_code, debug_id)
-                raise PayPalAuthError(f"OAuth failed with status {resp.status_code}")
+                error = PayPalUnavailable if resp.status_code >= 500 else PayPalAuthError
+                raise error(f"OAuth failed with status {resp.status_code}")
 
             try:
                 data = resp.json()
@@ -160,6 +158,7 @@ class PayPalClient:
         *,
         headers: Mapping[str, str] | None = None,
         json: Any = None,
+        content: bytes | None = None,
         params: Mapping[str, Any] | None = None,
         retry_401: bool = True,
     ) -> httpx.Response:
@@ -177,6 +176,7 @@ class PayPalClient:
                     url=url,
                     headers=req_headers,
                     json=json,
+                    content=content,
                     params=params,
                 )
         except (httpx.TimeoutException, httpx.NetworkError) as exc:
@@ -194,6 +194,7 @@ class PayPalClient:
                 path,
                 headers=headers,
                 json=json,
+                content=content,
                 params=params,
                 retry_401=False,
             )

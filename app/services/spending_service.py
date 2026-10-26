@@ -7,7 +7,7 @@ from typing import Any
 from app.core.config import Settings
 from app.domain.money import format_display
 from app.repositories.errors import call_rpc_with_retry
-from app.repositories.protocols import SpendingRepository, SpendingSummaryRow
+from app.repositories.ports.spending import SpendingRepository, SpendingSummaryRow
 
 
 class SpendingService:

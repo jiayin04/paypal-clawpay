@@ -7,6 +7,7 @@ from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints
 
+
 _CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 NAME_MAX = 80
 MAX_UNIT_PRICE = 10_000_000

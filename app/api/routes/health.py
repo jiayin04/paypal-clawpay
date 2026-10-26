@@ -15,6 +15,7 @@ from app.api.dependencies import get_app_settings, get_supabase_client
 from app.core.config import Settings
 from app.integrations.supabase import check_supabase
 
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["health"])

@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -53,7 +54,11 @@ class ApiError(AppError):
 
 
 class Unauthorized(ApiError):
-    def __init__(self, message: str = "Authentication required.", code: str = "unauthorized") -> None:
+    def __init__(
+        self,
+        message: str = "Authentication required.",
+        code: str = "unauthorized",
+    ) -> None:
         super().__init__(401, code, message, {"WWW-Authenticate": "Bearer"})
 
 
@@ -94,8 +99,12 @@ def _error_body(code: str, message: str) -> dict:
     return {"error": {"code": code, "message": message}}
 
 
-async def _app_error_handler(_: Request, exc: AppError) -> JSONResponse:
+async def _app_error_handler(request: Request, exc: AppError) -> JSONResponse:
     headers = getattr(exc, "headers", None) or None
+    if request.url.path == "/llm/v1/chat/completions":
+        headers = {**(headers or {}), "Cache-Control": "no-store"}
+        kind = "server_error" if exc.status_code >= 500 else "invalid_request_error"
+        return JSONResponse(status_code=exc.status_code,content={"error":{"message":exc.message,"type":kind,"code":exc.code}},headers=headers)
     return JSONResponse(
         status_code=exc.status_code, content=_error_body(exc.code, exc.message), headers=headers
     )

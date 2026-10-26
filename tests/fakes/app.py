@@ -14,8 +14,9 @@ from app.core.security import generate_device_token, generate_llm_token, hash_to
 from app.main import create_app
 from app.services.container import Services, build_services
 from tests.fakes.clock import FakeClock
-from tests.fakes.keys import SUPABASE_URL, JwtSigner
+from tests.fakes.keys import JwtSigner, SUPABASE_URL
 from tests.fakes.store import InMemoryStore
+
 
 PEPPER = "test-pepper-0123456789-abcdefghijklmnop"
 ADMIN_TOKEN = "test-admin-token-0123456789-abcdefghijkl"
@@ -111,6 +112,7 @@ def make_harness(
     merchant_transports: dict[str, httpx.AsyncBaseTransport] | None = None,
     paypal_transport: httpx.AsyncBaseTransport | None = None,
     paypal_gateway: Any = None,
+    llm_client: httpx.AsyncClient | None = None,
     raise_server_exceptions: bool = True,
     **settings_overrides: Any,
 ) -> Harness:
@@ -127,6 +129,7 @@ def make_harness(
         merchant_transports=merchant_transports,
         paypal_gateway=paypal_gateway,
         paypal_transport=paypal_transport,
+        llm_client=llm_client,
     )
     app = create_app(settings, services=services, start_background=False)
     client = TestClient(app, raise_server_exceptions=raise_server_exceptions)

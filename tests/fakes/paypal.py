@@ -11,8 +11,8 @@ Simulates:
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
-from typing import Any, Mapping
+from dataclasses import dataclass
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -26,6 +26,7 @@ class PayPalCall:
     path: str
     headers: dict[str, str]
     body: Any
+    raw_body: bytes = b""
 
 
 class FakePayPalTransport(httpx.AsyncBaseTransport):
@@ -72,6 +73,7 @@ class FakePayPalTransport(httpx.AsyncBaseTransport):
                 path=parsed.path,
                 headers=dict(request.headers),
                 body=body,
+                raw_body=request.content,
             )
         )
 
@@ -196,6 +198,7 @@ class FakePayPalTransport(httpx.AsyncBaseTransport):
                 json={
                     "id": "PT-VAULT-TOKEN-999",
                     "customer": {"id": "CUST-001"},
+                    "payment_source": {"paypal":{"email_address":"john@example.com"}},
                     "status": "VAULTED",
                 },
                 request=request,

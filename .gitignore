@@ -19,3 +19,10 @@ supabase/.temp/
 
 # Agent workflow scratch
 .agents/
+
+# Local dependency caches and editor state
+.uv-cache/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

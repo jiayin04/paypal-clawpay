@@ -18,6 +18,7 @@ from app.core.config import Settings
 from app.core.exceptions import ServiceUnavailable, Unauthorized
 from app.core.security import constant_time_equals
 
+
 logger = logging.getLogger(__name__)
 
 ASYMMETRIC_ALGORITHMS = ["ES256", "RS256"]

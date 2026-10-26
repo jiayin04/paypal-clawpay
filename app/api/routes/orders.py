@@ -14,6 +14,7 @@ from app.domain.order_state import to_api_status
 from app.schemas.devices import UUID_RE
 from app.services.context import UserContext
 
+
 router = APIRouter(prefix="/api/v1/orders", tags=["orders"])
 
 _UUID = re.compile(UUID_RE)
@@ -59,6 +60,10 @@ async def get_order(
         order = await reader.get_order_detail(order_id)
     if order is None:
         raise _not_found()
+    if order["status"] in ("PAYMENT_PENDING", "REQUIRES_RECONCILIATION"):
+        await services.payments.reconcile_order(order_id)
+        async with services.user_reader(user.jwt) as reader:
+            order = await reader.get_order_detail(order_id)
     return _with_api_status(order)
 
 
@@ -69,3 +74,22 @@ async def cancel_order(
     services: ServicesDep,
 ) -> dict[str, Any]:
     return await services.orders.cancel(_order_id(order_id), user.user_id)
+
+
+@router.get('/{order_id}/timeline')
+async def order_timeline(order_id: str, user: Annotated[UserContext, Depends(require_user)], services: ServicesDep,
+                         limit: Annotated[int,Query(ge=1,le=100)] = 20, before: datetime | None = None):
+    order_id = _order_id(order_id)
+    async with services.user_reader(user.jwt) as reader:
+        if not await reader.get_order_detail(order_id):
+            raise _not_found()
+        return {'events':await reader.timeline(order_id,limit=limit,before=before)}
+
+@router.get('/{order_id}/a2a-messages')
+async def order_a2a(order_id: str, user: Annotated[UserContext, Depends(require_user)], services: ServicesDep,
+                    limit: Annotated[int,Query(ge=1,le=100)] = 20, before: datetime | None = None):
+    order_id = _order_id(order_id)
+    async with services.user_reader(user.jwt) as reader:
+        if not await reader.get_order_detail(order_id):
+            raise _not_found()
+        return {'messages':await reader.a2a_messages(order_id,limit=limit,before=before)}

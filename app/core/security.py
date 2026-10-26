@@ -17,6 +17,7 @@ from typing import Literal
 
 from starlette.requests import Request
 
+
 DEVICE_TOKEN_PREFIX = "cpd_"
 LLM_TOKEN_PREFIX = "cpl_"
 DEVICE_TOKEN_RE = re.compile(r"^cpd_[A-Za-z0-9_-]{43}$")

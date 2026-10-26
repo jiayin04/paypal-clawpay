@@ -8,7 +8,8 @@ from postgrest.exceptions import APIError
 from app.core.exceptions import ServiceUnavailable
 from app.repositories import errors as errors_mod
 from app.repositories.errors import RepositoryError, call_rpc_with_retry
-from app.repositories.supabase_repos import SupabaseDeviceRepository, SupabaseOrderRepository
+from app.repositories.supabase.devices import SupabaseDeviceRepository
+from app.repositories.supabase.orders import SupabaseOrderRepository
 from tests.fakes.store import InMemoryStore
 
 
@@ -116,3 +117,19 @@ async def test_db_not_configured_is_503() -> None:
     repos = supabase_repositories(Settings(_env_file=None))
     with pytest.raises(ServiceUnavailable):
         await repos.devices.find_by_token_hash("x")
+
+
+@pytest.mark.anyio
+async def test_payment_method_rpc_arguments_match_sql():
+    from app.repositories.supabase.payment_methods import SupabasePaymentMethodRepository
+    client=_FakeRpc([{'ok':True,'reason':'activated'}])
+    repo=SupabasePaymentMethodRepository(lambda:client)
+    await repo.activate_payment_method(payment_method_id='pm',user_id='u',vault_token_reference='vault',provider_customer_reference='customer',payer_email_masked='j***@example.com')
+    name,params=client.calls[-1]
+    assert name=='activate_payment_method'
+    assert set(params)=={'p_payment_method_id','p_vault_token_reference','p_provider_customer_reference','p_payer_email_masked'}
+    await repo.revoke_payment_method(payment_method_id='pm',user_id='u')
+    assert client.calls[-1]==('revoke_payment_method',{'p_id':'pm','p_user_id':'u'})
+    await repo.find_by_state('random-state')
+    import hashlib
+    assert client.calls[-1]==('find_payment_method_by_state',{'p_state_hash':hashlib.sha256(b'random-state').hexdigest()})

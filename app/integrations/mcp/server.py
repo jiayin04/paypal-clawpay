@@ -11,13 +11,13 @@ from pydantic import ValidationError
 from starlette.background import BackgroundTasks
 
 from app.domain.money import format_display
-from app.integrations.mcp import jsonrpc
-from app.integrations.mcp import tools as mcp_tools
+from app.integrations.mcp import jsonrpc, tools as mcp_tools
 from app.services.container import Services
 from app.services.context import DeviceContext
 from app.services.conversation_service import call_summary, response_summary
 from app.services.errors import ToolError
 from app.services.merchant_service import A2ALog, MerchantFailure
+
 
 logger = logging.getLogger(__name__)
 

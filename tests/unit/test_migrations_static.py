@@ -37,6 +37,10 @@ def test_phase2_migrations_exist_and_sort_after_initial() -> None:
 def test_every_new_function_is_locked_down(path: Path) -> None:
     sql = path.read_text(encoding="utf-8")
     functions = set(_FUNC_RE.findall(sql))
+    if path.name.endswith("phase4_realtime.sql"):
+        assert not functions and not _TABLE_RE.findall(sql)
+        assert "pg_publication_tables" in sql and "and not exists" in sql
+        return
     assert functions, "expected at least one function"
     for name in functions:
         body = re.search(
@@ -146,3 +150,24 @@ def test_phase3_migration_content() -> None:
     ]:
         assert f"create or replace function public.{fn}" in sql
 
+
+
+def test_phase4_realtime_matches_design():
+    sql = (MIGRATIONS / "20261025090300_phase4_realtime.sql").read_text()
+    # Golden SQL is self-contained: a fresh clone has no ignored agent notes.
+    expected = """do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+     and not exists (select 1 from pg_publication_tables
+                     where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'orders') then
+    alter publication supabase_realtime add table public.orders;
+  end if;
+end $$;"""
+    assert sql.strip() == expected
+
+
+def test_phase3_expiry_sweep_preserves_lock_order():
+    sql = (MIGRATIONS / '20261025090200_phase3_approvals_payments.sql').read_text(encoding='utf-8')
+    sweep = sql[sql.index('create or replace function public.expire_stale_orders'):]
+    assert sweep.index('public.devices') < sweep.index('for update skip locked')
+    assert 'for share skip locked' in sweep and 'order by o.id' in sweep

@@ -22,6 +22,7 @@ from fastapi.responses import JSONResponse
 from app.core.clock import Clock, SystemClock
 from app.merchant_agents import catalogs
 
+
 QUOTE_TTL = timedelta(minutes=5)
 SUPPORTED_CURRENCIES = frozenset({catalogs.CATALOG_CURRENCY})
 MAX_SEARCH_RESULTS = 10

@@ -17,6 +17,7 @@ from app.repositories.errors import RepositoryError
 from app.services.container import Services
 from app.services.context import AdminContext, DeviceContext, UserContext
 
+
 logger = logging.getLogger(__name__)
 
 LAST_SEEN_INTERVAL = timedelta(seconds=60)

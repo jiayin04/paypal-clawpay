@@ -19,15 +19,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.core.config import Settings
-from app.integrations.paypal import (
-    PayPalApiError,
-    PayPalAuthError,
-    PayPalClient,
-    PayPalService,
-    PayPalUnavailable,
-    to_paypal_value,
-)
+from app.integrations.paypal import PayPalApiError, PayPalAuthError, PayPalClient, PayPalService, PayPalUnavailable
 from tests.fakes.app import make_settings
 from tests.fakes.paypal import FakePayPalTransport
 

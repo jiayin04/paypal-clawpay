@@ -10,12 +10,25 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.api.routes import approvals, devices, health, mcp, orders, payment_methods
+from app.api.routes import (
+    approvals,
+    audit,
+    conversations,
+    devices,
+    health,
+    llm_proxy,
+    mcp,
+    orders,
+    payment_methods,
+    spending,
+    webhooks,
+)
 from app.core.config import Settings, get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
 from app.repositories.errors import RepositoryError
 from app.services.container import Services, build_services
+
 
 logger = logging.getLogger(__name__)
 
@@ -42,13 +55,10 @@ def create_app(
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         # Background reconciler (Phase 3): starts when start_background=True and PayPal configured.
         task: asyncio.Task | None = None
-        if start_background and settings.paypal_client_id:
-            import anyio
-            from anyio import create_task_group
-            tg_ref: list[object] = []
+        if start_background and settings.paypal_configured:
 
             async def _run_reconciler() -> None:
-                await services.reconciliation.run_forever(interval_seconds=30.0)
+                await services.reconciliation.run_forever(interval_seconds=settings.reconcile_interval_seconds)
 
             loop = asyncio.get_event_loop()
             task = loop.create_task(_run_reconciler())
@@ -63,6 +73,7 @@ def create_app(
                 except (asyncio.CancelledError, Exception):
                     pass
                 logger.info("Background reconciler stopped")
+            await services.llm.client.aclose()
 
     is_production = settings.app_env == "production"
     app = FastAPI(
@@ -87,6 +98,11 @@ def create_app(
     app.include_router(orders.router)
     app.include_router(approvals.router)
     app.include_router(payment_methods.router)
+    app.include_router(webhooks.router)
+    app.include_router(llm_proxy.router)
+    app.include_router(conversations.router)
+    app.include_router(spending.router)
+    app.include_router(audit.router)
     if settings.mcp_enabled:
         app.include_router(mcp.router)
     return app

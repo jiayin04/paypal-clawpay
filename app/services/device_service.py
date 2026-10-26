@@ -18,7 +18,8 @@ from app.core.config import Settings
 from app.core.exceptions import ApiError, Conflict, ServiceUnavailable
 from app.core.security import generate_device_token, generate_llm_token, hash_token
 from app.repositories.errors import RepositoryError, call_rpc_with_retry
-from app.repositories.protocols import DeviceRecord, DeviceRepository
+from app.repositories.ports.devices import DeviceRecord, DeviceRepository
+
 
 logger = logging.getLogger(__name__)
 

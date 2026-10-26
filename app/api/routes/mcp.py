@@ -17,8 +17,9 @@ from app.api.body import MCP_BODY_LIMIT, read_limited_body
 from app.api.dependencies import authenticate_device, bearer_token, get_services
 from app.core.exceptions import PayloadTooLarge, RateLimited
 from app.integrations.mcp import jsonrpc
-from app.integrations.mcp.server import SUPPORTED_VERSIONS, McpServer
+from app.integrations.mcp.server import McpServer, SUPPORTED_VERSIONS
 from app.services.container import Services
+
 
 router = APIRouter(tags=["mcp"])
 

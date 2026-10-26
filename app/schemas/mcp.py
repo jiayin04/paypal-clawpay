@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from app.schemas.devices import UuidStr
 
+
 MerchantCode = Literal["grocer", "electronics"]
 
 

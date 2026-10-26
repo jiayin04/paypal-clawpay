@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -29,7 +29,7 @@ class GadgetApprovalRequest(BaseModel):
     key_version: int = Field(ge=1)
     nonce: str = Field(pattern=r"^[A-Za-z0-9_-]{43}$")
     decision: Literal["approved", "denied"]
-    signature: str | None = Field(default=None, max_length=200)
+    signature: str | None = None
 
 
 class GadgetApprovalResponse(BaseModel):

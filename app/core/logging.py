@@ -11,7 +11,8 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any
+from typing import Any, TYPE_CHECKING
+
 
 if TYPE_CHECKING:
     from app.core.config import Settings

@@ -20,6 +20,7 @@ from app.schemas.mcp import (
     SearchProductsArgs,
 )
 
+
 MAX_RESPONSE_BYTES = 3900  # device MCP client buffer is 4096 bytes
 
 TOOLS: list[dict[str, Any]] = [

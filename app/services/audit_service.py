@@ -11,7 +11,8 @@ import logging
 from collections.abc import Mapping
 from typing import Any
 
-from app.repositories.protocols import AuditRepository
+from app.repositories.ports.events import AuditRepository
+
 
 logger = logging.getLogger(__name__)
 

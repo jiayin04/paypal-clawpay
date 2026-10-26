@@ -5,14 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 from app.integrations.paypal.client import PayPalClient
-from app.integrations.paypal.models import (
-    ProviderOrder,
-    from_paypal_value,
-    to_paypal_value,
-)
+from app.integrations.paypal.models import ProviderOrder, from_paypal_value, to_paypal_value
 
 
-def _parse_provider_order(data: dict[str, Any]) -> ProviderOrder:
+def parse_provider_order(data: dict[str, Any]) -> ProviderOrder:
     """Extract order and capture details from PayPal v2 order JSON."""
     order_id = str(data["id"])
     status = str(data.get("status", "UNKNOWN"))
@@ -22,6 +18,7 @@ def _parse_provider_order(data: dict[str, Any]) -> ProviderOrder:
     capture_status_reason: str | None = None
     capture_amount_minor: int | None = None
     capture_currency: str | None = None
+    capture_amount_value: str | None = None
 
     pus = data.get("purchase_units", [])
     if pus and isinstance(pus[0], dict):
@@ -39,6 +36,7 @@ def _parse_provider_order(data: dict[str, Any]) -> ProviderOrder:
             if isinstance(amount_obj, dict):
                 capture_currency = amount_obj.get("currency_code")
                 val_str = amount_obj.get("value")
+                capture_amount_value = val_str if isinstance(val_str,str) else None
                 if val_str is not None:
                     try:
                         capture_amount_minor = from_paypal_value(str(val_str))
@@ -53,6 +51,7 @@ def _parse_provider_order(data: dict[str, Any]) -> ProviderOrder:
         capture_status_reason=capture_status_reason,
         capture_amount_minor=capture_amount_minor,
         capture_currency=capture_currency,
+        capture_amount_value=capture_amount_value,
     )
 
 
@@ -94,7 +93,7 @@ async def create_order_with_vault(
         },
     }
     resp = await client.request("POST", "/v2/checkout/orders", headers=headers, json=body)
-    return _parse_provider_order(resp.json())
+    return parse_provider_order(resp.json())
 
 
 async def capture_order(
@@ -113,7 +112,7 @@ async def capture_order(
         f"/v2/checkout/orders/{provider_order_id}/capture",
         headers=headers,
     )
-    return _parse_provider_order(resp.json())
+    return parse_provider_order(resp.json())
 
 
 async def get_order(
@@ -122,4 +121,4 @@ async def get_order(
 ) -> ProviderOrder:
     """Poll order status and captures by PayPal order ID (§3.7)."""
     resp = await client.request("GET", f"/v2/checkout/orders/{provider_order_id}")
-    return _parse_provider_order(resp.json())
+    return parse_provider_order(resp.json())

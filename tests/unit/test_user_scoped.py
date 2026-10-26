@@ -5,7 +5,7 @@ import warnings
 import httpx
 import pytest
 
-from app.repositories.errors import RepositoryError
+from app.core.exceptions import ServiceUnavailable, Unauthorized
 from app.repositories.user_scoped import make_user_reader_factory
 from tests.fakes.app import PUBLISHABLE_KEY, make_settings
 from tests.fakes.keys import SUPABASE_URL
@@ -54,7 +54,7 @@ async def test_headers_columns_and_close() -> None:
 async def test_client_closed_when_read_raises() -> None:
     rec = _Recorder(status=500, body={"code": "XX000", "message": "boom"})
     factory = make_user_reader_factory(make_settings(), http_client_factory=rec.factory)
-    with pytest.raises(RepositoryError):
+    with pytest.raises(ServiceUnavailable):
         async with factory(JWT) as reader:
             await reader.list_orders(limit=5, before=None)
     assert rec.clients[0].is_closed
@@ -67,3 +67,14 @@ async def test_order_detail_not_found() -> None:
     async with factory(JWT) as reader:
         assert await reader.get_order_detail("00000000-0000-0000-0000-000000000001") is None
     assert len(rec.requests) == 1
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize('code,expected', [('PGRST301',Unauthorized),('XX000',ServiceUnavailable)])
+async def test_dashboard_error_mapping(code,expected):
+    rec = _Recorder(status=401 if code == 'PGRST301' else 500, body={'code':code,'message':'hidden'})
+    factory = make_user_reader_factory(make_settings(),http_client_factory=rec.factory)
+    with pytest.raises(expected):
+        async with factory(JWT) as reader:
+            await reader.list_conversations(limit=20,before=None)
+    assert rec.clients[-1].is_closed

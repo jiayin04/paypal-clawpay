@@ -6,6 +6,7 @@ from starlette.requests import Request
 
 from app.core.exceptions import PayloadTooLarge
 
+
 MCP_BODY_LIMIT = 64 * 1024
 DEVICE_REST_BODY_LIMIT = 16 * 1024
 WEBHOOK_BODY_LIMIT = 256 * 1024

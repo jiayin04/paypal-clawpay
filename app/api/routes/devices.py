@@ -26,8 +26,9 @@ from app.api.dependencies import (
 )
 from app.core.exceptions import ApiError, Forbidden, RateLimited, Unauthorized
 from app.core.security import client_ip
-from app.schemas.devices import UUID_RE, RegisterDeviceRequest, RevokeDeviceResponse
+from app.schemas.devices import RegisterDeviceRequest, RevokeDeviceResponse, UUID_RE
 from app.services.context import AdminContext, DeviceContext, UserContext
+
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +130,7 @@ async def get_pending_approvals(
     device: Annotated[DeviceContext, Depends(require_device)],
     request: Request,
     services: ServicesDep,
-    wait: Annotated[int, Query(ge=0, le=25)] = 25,
+    wait: Annotated[int, Query(ge=0, le=25)] = 0,
 ) -> dict[str, Any]:
     """Long-poll for pending device approval requests (contract §6.4, AC3.10)."""
     if not _UUID.match(device_id):
@@ -153,6 +154,7 @@ async def get_pending_approvals(
                 return {"orders": []}
 
             orders = await services.repos.orders.list_pending_for_device(device_id)
+            orders = [o for o in orders if o.quote_expires_at and o.quote_expires_at > services.clock.utc_now()][:5]
             if orders:
                 return {
                     "orders": [

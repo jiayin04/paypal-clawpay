@@ -12,6 +12,7 @@ import httpx
 from app.merchant_agents import catalogs
 from tests.fakes.clock import FakeClock
 
+
 Mutator = Callable[[dict[str, Any], dict[str, Any]], Any]
 
 

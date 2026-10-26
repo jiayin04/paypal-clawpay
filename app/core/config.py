@@ -17,6 +17,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from app.domain.money import EXPONENTS
 
+
 _CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
 _LOOPBACK_HOSTS = ("127.0.0.1", "localhost")
 _MIN_PEPPER_LENGTH = 32

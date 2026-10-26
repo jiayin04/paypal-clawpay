@@ -11,6 +11,7 @@ import re
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+
 _NAME_DISALLOWED = re.compile(r"[^A-Za-z0-9 .,&'()-]")
 _SPACES = re.compile(r" {2,}")
 MERCHANT_NAME_MAX = 40

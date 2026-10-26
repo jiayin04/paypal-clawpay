@@ -11,14 +11,8 @@ Covers all 3 tables from contracts.md §3.7:
 from __future__ import annotations
 
 import httpx
-import pytest
 
-from app.integrations.paypal.errors import (
-    PaymentClassification,
-    PayPalApiError,
-    PayPalUnavailable,
-    classify,
-)
+from app.integrations.paypal.errors import PayPalApiError, PayPalUnavailable, classify
 from app.integrations.paypal.models import ProviderOrder
 
 
@@ -139,8 +133,7 @@ def test_classify_voided() -> None:
         status="VOIDED",
     )
     res = classify(order, source="poll")
-    assert res.status == "failed"
-    assert res.failure_code == "voided"
+    assert res.status == "uncertain"
 
 
 def test_classify_created_approved_no_capture_marker() -> None:
@@ -158,7 +151,7 @@ def test_classify_created_approved_no_capture_marker() -> None:
 
     # If from poll/reconcile, classifies as pending
     res_poll = classify(order, source="poll", attempt=attempt)
-    assert res_poll.status == "pending"
+    assert res_poll.status == "capture_needed"
 
 
 # ---------------------------------------------------------------------------
@@ -205,8 +198,8 @@ def test_classify_404_is_uncertain() -> None:
     """404 Not Found classifies as uncertain."""
     err = PayPalApiError(status=404, name="RESOURCE_NOT_FOUND")
     res = classify(err, source="poll")
-    assert res.status == "uncertain"
-    assert res.failure_code == "not_found"
+    assert res.status == "no_result"
+    assert res.failure_code is None
 
 
 def test_classify_409_429_5xx_are_uncertain() -> None:

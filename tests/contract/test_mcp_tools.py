@@ -13,7 +13,7 @@ from app.integrations.mcp import tools as mcp_tools
 from tests.fakes.app import Harness, make_harness, tool_payload
 from tests.fakes.merchants import ScriptedMerchant
 
-CONTRACTS = Path(__file__).resolve().parents[3] / "doc" / "contracts.md"
+CONTRACTS = Path(__file__).resolve().parents[2] / "docs" / "contracts.md"
 
 
 def _contract_schemas() -> dict[str, dict]:

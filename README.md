@@ -1,127 +1,158 @@
 # ClawPay Middleware
 
-Backend that sits between the ESP-Claw on-device agent (ESP32-S3 gadget), merchant agents, and PayPal. The device LLM will call ClawPay's MCP tools over HTTPS, and a firmware C task will sign order approvals. The backend owns orders, approvals, spending limits, and payment state, with Supabase Postgres as the source of truth. This is the Phase 0 + Phase 1 scaffold: app factory, typed config, redacting logs, health checks, Supabase client, and the initial database schema.
+Implemented backend for phases 0–4: ESP-Claw calls four stateless MCP tools, deterministic A2A merchants supply validated quotes, a device P-256 signature authorizes payment, and the backend handles PayPal Sandbox execution, spending reservations and reconciliation. Includes verified webhooks, an OpenAI-compatible LLM proxy, and user-scoped dashboard APIs. Firmware and a dashboard frontend are separate work.
 
-- Plan, decisions and roadmap: [../doc/impl_plan.md](../doc/impl_plan.md)
-- MCP / device / approval contracts (proposed): [../doc/contracts.md](../doc/contracts.md)
-- Setting up the backend and the ESP-Claw device together: [../doc/setup.md](../doc/setup.md)
+- [Backend + ESP-Claw setup](docs/setup.md)
+- [Integration contracts](docs/contracts.md)
+- [Decisions and phase status](docs/implementation-plan.md#19-decisions-log)
+- [Verification evidence](docs/verification.md)
+- [Code layout and contribution guide](docs/architecture.md)
+- [Remaining work, in order](docs/remaining-work.md)
 
-## Phase 0 assessment
+The code is organized into HTTP routes, business services, pure domain rules, provider integrations and persistence adapters. Repository interfaces and Supabase implementations are split by feature, with matching test fakes. See the architecture guide above for contribution rules and the remaining-work checklist for live validation still required.
 
-Greenfield. The workspace contained only `doc/impl_plan.md`: no existing backend, device/relay code, AP2 sample, AgentCore/A2A code, PayPal integration, schema, or tests to reuse. PayPal, AP2, A2A, AgentCore, and MCP modules are intentionally not created yet.
+## Setup and run
 
-## Prerequisites
-
-- Python 3.12 (pinned via `requires-python = ">=3.12,<3.13"`)
-- [uv](https://docs.astral.sh/uv/) 0.10.x (dependency manager; `uv.lock` holds the resolved tree)
-- Supabase CLI 2.x for migrations. Docker Desktop only if you want the optional local stack.
-
-## Setup
+Python 3.12 and uv are required. From `backend/`:
 
 ```powershell
-cd backend
 uv sync --python 3.12
-Copy-Item .env.example .env   # then fill in values; never commit .env
+Copy-Item .env.example .env
+# Fill in your server credentials; do not commit .env.
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1
 ```
 
-Direct dependencies are pinned to exact versions in `pyproject.toml`: fastapi 0.162.0, pydantic 2.14.1, pydantic-settings 2.16.1, supabase 2.33.0, uvicorn 0.54.0, tzdata 2026.5 (IANA zones on Windows); dev: pytest 9.1.1, httpx 0.28.1.
+Use **one worker**: rate limits, LLM token budgets and reconciliation throttles are in memory. Set `APP_ENV=production` before exposing a tunnel to disable API documentation. Configure `PUBLIC_BASE_URL` with its HTTPS origin. `CLIENT_IP_HEADER=cf-connecting-ip` is for cloudflared; `x-forwarded-for-last` is for a trusted ngrok proxy; use `none` without a proxy. Keep readiness checks off public ingress.
 
-## Environment variables
+Populate Supabase URL, service-role key, publishable key, token pepper (at least 32 characters), admin token (at least 32 characters), and PayPal Sandbox credentials. Enable `MCP_ENABLED=true`. Empty merchant endpoints use deterministic in-process mock merchants. LLM proxy settings are optional; an unconfigured proxy returns 503.
 
-Money values are integers in minor units (sen for MYR): RM100 = `10000`, RM500 = `50000`.
+Registration returns two tokens once: `cpd_` for MCP/device REST in private NVS `clawpay`; `cpl_` for Web Console LLM Settings at `<PUBLIC_BASE_URL>/llm/v1`. The upstream LLM key stays on the backend.
 
-| Variable | Needed now | Meaning |
-| --- | --- | --- |
-| `APP_ENV` | no (default `development`) | `development` / `test` / `staging` / `production`. Production disables `/docs` and `/openapi.json`. |
-| `APP_HOST`, `APP_PORT` | no | Bind address hints (pass to uvicorn). |
-| `LOG_LEVEL` | no (default `INFO`) | Root log level. |
-| `SUPABASE_URL` | for `/health/ready` | Supabase project API URL. |
-| `SUPABASE_SERVICE_ROLE_KEY` | for `/health/ready` | Server-side only. Bypasses RLS. |
-| `SUPABASE_ANON_KEY` | no | Reserved for later user-scoped calls. |
-| `PAYPAL_ENV`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID` | no (Phase 2) | PayPal Sandbox credentials. Secret is server-side only. |
-| `GADGET_APPROVAL_PUBLIC_KEY_REGISTRY` | no | Placeholder; device keys live in the `devices` table. |
-| `AGENTCORE_REGION`, `PAYPAL_AGENT_ENDPOINT`, `GROCER_AGENT_ENDPOINT`, `ELECTRONICS_AGENT_ENDPOINT` | no | Agent hosting / A2A endpoints (later phases). |
-| `INTERNAL_SERVICE_TOKEN` | no | Admin / server-to-server token (device registration and agent calls into internal endpoints, Phase 2). Generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"`. |
-| `PUBLIC_BASE_URL` | no (Phase 2) | Public HTTPS origin the ESP-Claw device calls (tunnel or host, CA-signed cert). |
-| `MCP_ENABLED` | no (default `false`) | Mounts `POST /mcp` once implemented. |
-| `DEVICE_TOKEN_PEPPER` | no (Phase 2) | HMAC pepper for hashing device tokens at rest. Server-side only. |
-| `LLM_PROXY_UPSTREAM_BASE_URL`, `LLM_PROXY_UPSTREAM_API_KEY`, `LLM_PROXY_MODEL` | no (Phase 4) | OpenAI-compatible LLM proxy for the device, so the LLM key stays off the device. The key is server-side only. |
-| `PHONE_APPROVAL_THRESHOLD_MINOR` | no (default `10000`) | Phone approval required for totals strictly above this. The spec's `PHONE_APPROVAL_THRESHOLD_MYR` / `DAILY_SPENDING_LIMIT_MYR` names are rejected at startup (not silently ignored) so a major-unit value can't be mistaken for minor units. |
-| `DAILY_SPENDING_LIMIT_MINOR` | no (default `50000`) | Daily cap. Must be >= the threshold. |
-| `DEFAULT_CURRENCY` | no (default `MYR`) | ISO 4217 code, normalised to upper case. |
-| `SPENDING_DAY_TIMEZONE` | no (default `Asia/Kuala_Lumpur`) | Calendar day boundary for the daily cap. |
+## Database migration pre-step
 
-Secrets are held as `SecretStr` and are scrubbed from logs. Keep the service-role key, PayPal secret, internal token, device-token pepper, and LLM upstream key out of the dashboard, public frontend variables, and ESP32 firmware. Use the hosting platform's secret manager when deployed.
+**If you already dropped the ClawPay tables:** run [supabase/schema.sql](supabase/schema.sql) first, then [supabase/seed.sql](supabase/seed.sql) in the Supabase SQL Editor as postgres. See the [rebuild guide](docs/database-rebuild.md); this applies the full current schema and preserves Supabase Auth. Re-register devices and relink PayPal afterward.
 
-## Run
+**For an existing intact schema:** never edit the initial applied migration. Run the migration workflow in [setup A3](docs/setup.md#a3-apply-migrations-to-the-hosted-supabase-project--works-now): link, inspect migration history, repair the initial history entry only if needed, and review a dry run before pushing. Exactly four new files follow `20261024133807_initial_schema.sql`:
 
-```powershell
-uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
+1. `20261025090000_phase2_hardening.sql`
+2. `20261025090100_phase2_devices_orders_a2a.sql`
+3. `20261025090200_phase3_approvals_payments.sql`
+4. `20261025090300_phase4_realtime.sql`
 
-- `GET /health`: liveness, always 200, no secrets.
-- `GET /health/ready`: 200 `{"status":"ready","checks":{"supabase":"ok"}}` when Supabase is reachable and the migration is applied (it queries `merchants`). Otherwise 503 with `supabase` = `not_configured` (env vars missing) or `error` (unreachable / schema missing). Error details are never returned. The probe result is cached for 5 seconds so the unauthenticated endpoint can't drive database load; still keep it off the public ingress or behind rate limiting when deployed.
+RLS scopes reads to the user; explicit column grants hide tokens, provider references, raw payloads and audit details. Multi-row changes run in service-role-only RPCs with ordered row locks and one deadlock retry. `reserve_spending(..., p_timezone)` derives the spending day in SQL. Only `orders` is published to Realtime. The other dashboard data is polled. Python tests mock all external services; pgTAP files are provided but were not executed during this implementation. No hosted migrations were pushed.
+
+## Endpoints
+
+| Route | Authentication / purpose |
+| --- | --- |
+| `GET /health`, `GET /health/ready` | See unauthenticated table below |
+| `POST /mcp` | `cpd_` bearer; fresh initialize per tool call; 4 tools only |
+| `POST /mcp/{token}` | Optional demo fallback, `MCP_PATH_TOKEN_ENABLED=true` |
+| `POST /api/v1/devices/register` | Admin token; owner JWT only with explicit registration flag |
+| `GET /api/v1/devices` | JWT; safe device columns |
+| `DELETE /api/v1/devices/{id}` | Owner JWT or admin token; revokes both tokens |
+| `GET /api/v1/devices/{id}/pending-approvals` | `cpd_`; `wait=0..25`, default 0; new poll replaces old |
+| `GET /api/v1/orders/{id}/approval-challenge` | `cpd_`; canonical challenge, TTL capped by quote |
+| `POST /api/v1/orders/{id}/gadget-approval` | `cpd_` + P-256 signature for approval; ≤16 KB |
+| `GET /api/v1/orders`, `GET /api/v1/orders/{id}` | JWT; safe detail with approvals and payment attempts |
+| `POST /api/v1/orders/{id}/cancel` | Owner JWT; cannot cancel in-flight payment |
+| `GET /api/v1/orders/{id}/timeline`, `/a2a-messages` | JWT; safe summaries |
+| `GET /api/v1/conversations`, `/api/v1/conversations/{id}/events` | JWT; safe summaries |
+| `GET /api/v1/spending/summary`, `GET /api/v1/audit-events` | JWT; summary matches MCP tool |
+| `POST /api/v1/payment-methods/paypal/setup` | JWT; 5/min, returns approve URL |
+| `GET /api/v1/payment-methods/paypal/return` | See unauthenticated table below |
+| `GET /api/v1/payment-methods`, `DELETE /api/v1/payment-methods/{id}` | JWT; masked email, no vault references |
+| `POST /api/v1/webhooks/paypal` | See unauthenticated table below |
+| `POST /llm/v1/chat/completions` | `cpl_` only; model pinned, bounded tokens and daily usage |
+
+JWT dashboard reads require `SUPABASE_PUBLISHABLE_KEY`; unset → `503 dashboard_not_configured`. List pagination uses `limit=1..100` (default 20), `before=<created_at ISO timestamp>`. There is no charge/approve/capture/refund/transfer MCP tool.
+
+### Endpoints without user/device authentication
+
+| Endpoint | Protection |
+| --- | --- |
+| `GET /health`, `GET /health/ready` | No secrets; readiness cached 5 seconds; keep off public ingress |
+| `POST /api/v1/webhooks/paypal` | PayPal signature verification before persistence, 256 KB cap, 60 failed verifications/min/IP |
+| `GET /api/v1/payment-methods/paypal/return` | High-entropy single-use hashed state, 30-minute expiry, 10 invalid states/min/IP, stored setup-token reference, no-store/no-referrer page |
+| `/docs`, `/redoc`, `/openapi.json` | Disabled in production |
+
+## Payment behavior
+
+`create_order` validates merchant prices and stores an awaiting-approval DB order; it makes no PayPal call. Orders above 10000 minor units are blocked because phone approval is deferred. Approval reserves daily capacity and creates the mandate and payment attempt atomically. PayPal orders are created only after signature verification. Capture completion commits spending once; definitive failure releases it. Pending/uncertain outcomes hold the reservation. Polling is primary; webhooks are optional on quick tunnels. Late completion changes `payment_failed` to `paid` using the original approval day's accounting. Refunds and reversals are audited and **do not restore capacity**.
+
+Only open PayPal approve links you generated and check the masked account after linking. Never tell the user no money was taken without calling `get_order_status` again.
 
 ## Test
 
 ```powershell
-uv run pytest
+uv run --offline pytest
+uv run python -c "from app.core.config import Settings; from app.main import create_app; create_app(Settings(_env_file=None))"
 ```
 
-Tests live in `tests/` and need no network or Supabase (the client is mocked).
+Tests use in-memory repositories, real software P-256 signatures, MockTransport and in-process ASGI merchants. All default tests run without network or a database. The opt-in integration smoke is skipped unless `CLAWPAY_LIVE_SMOKE=1` and both `CLAWPAY_SMOKE_PAYPAL_CLIENT_ID` / `CLAWPAY_SMOKE_PAYPAL_CLIENT_SECRET` are set. It performs only OAuth + setup-token creation; see setup.md. Starlette emits one existing httpx deprecation warning; dependency pins remain unchanged.
 
-Database tests (pgTAP, `supabase/tests/database/`) cover `reserve_spending` validation, cross-owner FKs, approval single use, audit append-only, and the `authenticated`/`anon` privilege and RLS matrix. They run against the optional local stack and roll back all data (see below).
+## Environment variables
 
-## Database (Supabase)
+See `.env.example` for defaults and explanations. Money uses integer minor units: RM100 = 10000 sen, RM500 = 50000. `DEFAULT_CURRENCY` accepts MYR/USD. `SUPABASE_PUBLISHABLE_KEY` wins over legacy `SUPABASE_ANON_KEY`; HS256 requires `SUPABASE_JWT_SECRET`, otherwise JWKS verifies user JWTs. Try the legacy JWT service-role key if the newer `sb_secret_` key is not accepted by your hosted gateway.
 
-Primary target is a hosted Supabase project. Run from `backend/`:
-
-```powershell
-supabase login
-supabase link --project-ref <ref>   # prompts for the database password
-supabase db push --dry-run
-supabase db push
-```
-
-Then set `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` in `.env` from the project's API settings and check `GET /health/ready`.
-
-Local Supabase is optional, for validating migrations before a push (needs Docker Desktop). It was used for Phase 1 validation and then removed:
-
-```powershell
-supabase start        # first run pulls Docker images
-supabase db reset     # re-applies supabase/migrations/*
-supabase test db      # pgTAP suite
-supabase stop
-```
-
-Schema (`supabase/migrations/*_initial_schema.sql`): `user_profiles`, `devices`, `payment_methods`, `merchants`, `orders`, `order_items`, `mandates`, `approvals`, `spending_records`, `payment_attempts`, `conversations`, `conversation_events`, `audit_logs`, `webhook_events`. Money is `bigint` `*_minor` with a `currency char(3)` column.
-
-Security model:
-
-- RLS is on for every table. `anon` has no access.
-- Signed-in users can only `SELECT` their own rows (`user_profiles` also allows editing `display_name`). All writes go through the backend with the service role.
-- `payment_methods.vault_token_reference` / `provider_customer_reference` and `merchants.agent_endpoint_reference` are hidden from clients with column-level grants.
-- `audit_logs` is append-only (update/delete/truncate raise, even for service role). `audit_logs.user_id` has no FK so history survives user deletion. Users can read their own rows but not `details` or `actor_id`.
-- Composite FKs keep related rows on the same user: an approval's order and device, an order's or conversation's device, and a mandate's or spending record's order must all belong to that row's `user_id`.
-- Approvals are single use at the DB level: `consumed_at` can only be set on a verified `approved` row, and at most one approval per `(order_id, approval_type)` can be consumed. Phase 2 should still consume with `update ... where consumed_at is null`.
-- `webhook_events` is service-role only; `(provider, event_id)` is unique for deduplication.
-- Idempotency: `orders (user_id, idempotency_key)` and `payment_attempts (idempotency_key)` are unique. `approvals.nonce` is unique for replay protection.
-- `reserve_spending(p_user_id, p_order_id, p_amount_minor, p_currency, p_daily_limit_minor, p_spending_day)` takes a per-user-per-day advisory lock, locks the order row, and validates it in the same transaction: the order must belong to the user, be `AWAITING_APPROVAL` / `APPROVED` / `PAYMENT_PENDING`, have an unexpired `quote_expires_at`, and `p_amount_minor` must equal `orders.total_minor`. `p_currency` is the policy currency (pass `DEFAULT_CURRENCY`): the order must be in it, and usage is summed across all currencies so the cap is one budget. It inserts a `reserved` record for the order total only if committed + reserved + total <= limit. It is idempotent per order (a different amount returns `amount_mismatch`) and executable only by `service_role`. Possible `reason` values: `reserved`, `already_reserved`, `order_not_found`, `currency_mismatch`, `mixed_currency`, `invalid_order_status`, `quote_expired`, `amount_mismatch`, `daily_limit_exceeded`.
-
-Spending lifecycle: `reserved` → `committed` on confirmed payment, or `released` on failure, expiry, or cancellation (backend-managed). Refunds do not release spending yet; that policy is still open.
-
-## Open assumptions to validate before Phase 2
-
-- PayPal Sandbox: vaulting a PayPal Wallet without a purchase, setup-token → payment-token exchange, and merchant-initiated charging on the saved token.
-- AP2: actual mandate fields and validation method in the chosen sample (`mandates.mandate_type` is free text until then).
-- ESP-Claw integration: MCP server, device tokens, approval challenge and gadget signature (ECDSA P-256) are proposed in [../doc/contracts.md](../doc/contracts.md) and not implemented. `conversations.source` still defaults to `'xiaozhi'` from before the switch to ESP-Claw; change it in the Phase 2 migration.
-- AgentCore as the agent host is not yet confirmed.
-- Refund vs. spending-cap policy. The daily cap is a single budget in the policy currency; orders in other currencies are rejected by `reserve_spending` until a conversion policy exists.
-- Reservation is allowed from `AWAITING_APPROVAL` onwards and requires `quote_expires_at` to be set; revisit if Phase 2 reserves at a different step.
-- Supabase Auth JWT verification for user endpoints and `INTERNAL_SERVICE_TOKEN` auth for internal endpoints are not implemented yet (no such endpoints exist).
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `APP_ENV` | `development` |  |
+| `APP_HOST` | `0.0.0.0` |  |
+| `APP_PORT` | `8000` |  |
+| `LOG_LEVEL` | `INFO` |  |
+| `SUPABASE_URL` | `` |  |
+| `SUPABASE_PUBLISHABLE_KEY` | `` | Publishable key (sb_publishable_...) for RLS-scoped dashboard reads. SUPABASE_ANON_KEY is accepted as a legacy alias; PUBLISHABLE wins if both are set. |
+| `SUPABASE_SERVICE_ROLE_KEY` | `` |  |
+| `SUPABASE_JWT_SECRET` | `` | Only for legacy HS256 projects. Leave empty to verify user JWTs via the project JWKS. |
+| `PAYPAL_ENV` | `sandbox` | Sandbox only: PAYPAL_ENV=live is rejected at startup. |
+| `PAYPAL_CLIENT_ID` | `` |  |
+| `PAYPAL_CLIENT_SECRET` | `` |  |
+| `PAYPAL_WEBHOOK_ID` | `` |  |
+| `PAYPAL_HTTP_TIMEOUT_SECONDS` | `8` |  |
+| `PAYPAL_BRAND_NAME` | `ClawPay` |  |
+| `PAYPAL_INLINE_BUDGET_SECONDS` | `10` |  |
+| `RECONCILE_INTERVAL_SECONDS` | `30` |  |
+| `RECONCILE_REPLAY_WINDOW_SECONDS` | `900` |  |
+| `GADGET_APPROVAL_PUBLIC_KEY_REGISTRY` | `` |  |
+| `AGENTCORE_REGION` | `` |  |
+| `PAYPAL_AGENT_ENDPOINT` | `` |  |
+| `GROCER_AGENT_ENDPOINT` | `` | standalone: uv run uvicorn --factory app.merchant_agents.app:grocer_app --host 127.0.0.1 --port 8101 then GROCER_AGENT_ENDPOINT=http://127.0.0.1:8101/a2a. Only https:// or http://127.0.0.1 / http://localhost are accepted. |
+| `ELECTRONICS_AGENT_ENDPOINT` | `` |  |
+| `MERCHANT_AGENT_TIMEOUT_SECONDS` | `8` |  |
+| `INTERNAL_SERVICE_TOKEN` | `` | Admin token: device registration and admin revoke. At least 32 characters. Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))" |
+| `PUBLIC_BASE_URL` | `` | ESP-Claw device integration. PUBLIC_BASE_URL: public HTTPS origin with a CA-signed cert (tunnel or host), e.g. https://xxxx.trycloudflare.com. |
+| `MCP_ENABLED` | `false` |  |
+| `MCP_PATH_TOKEN_ENABLED` | `false` | Demo-only fallback POST /mcp/<device_token>; leaks the token into the device LLM context and logs. Keep false once the bearer-token firmware patch is flashed. |
+| `MCP_ALLOWED_ORIGINS` | `` | Comma-separated; any request with an Origin not listed gets 403. The device sends no Origin. |
+| `MCP_TOOL_CALLS_PER_MINUTE` | `30` |  |
+| `MCP_REQUESTS_PER_MINUTE` | `120` |  |
+| `DEVICE_REQUESTS_PER_MINUTE` | `30` |  |
+| `AUTH_FAILURES_PER_MINUTE` | `20` |  |
+| `CLIENT_IP_HEADER` | `none` | How to find the client IP for IP rate limits: none (socket peer), cf-connecting-ip (cloudflared), x-forwarded-for-last (ngrok). |
+| `DEVICE_OWNER_REGISTRATION_ENABLED` | `false` | false = only INTERNAL_SERVICE_TOKEN can register devices. |
+| `DEVICE_TOKEN_PEPPER` | `` | HMAC pepper for device/LLM tokens at rest. Required (>= 32 chars) when MCP_ENABLED=true. Generate like INTERNAL_SERVICE_TOKEN. Changing it invalidates every issued token. |
+| `QUOTE_TTL_SECONDS` | `300` | Orders |
+| `CHALLENGE_TTL_SECONDS` | `120` |  |
+| `ORDER_REQUIRE_PAYMENT_METHOD` | `true` |  |
+| `LLM_PROXY_UPSTREAM_BASE_URL` | `` | OpenAI-compatible LLM proxy for the device (Phase 4). The upstream key stays here, never on the device. Base URL without /chat/completions, e.g. https://api.openai.com/v1 |
+| `LLM_PROXY_UPSTREAM_API_KEY` | `` |  |
+| `LLM_PROXY_MODEL` | `` |  |
+| `LLM_PROXY_MAX_TOKENS` | `1024` |  |
+| `LLM_PROXY_REQUESTS_PER_MINUTE` | `20` |  |
+| `LLM_PROXY_DAILY_TOKEN_LIMIT` | `200000` |  |
+| `LLM_PROXY_MAX_BODY_BYTES` | `262144` |  |
+| `LLM_PROXY_TIMEOUT_SECONDS` | `110` |  |
+| `PHONE_APPROVAL_THRESHOLD_MINOR` | `10000` | Money is in MINOR units (sen for MYR): RM100 = 10000, RM500 = 50000. |
+| `DAILY_SPENDING_LIMIT_MINOR` | `50000` |  |
+| `DEFAULT_CURRENCY` | `MYR` | MYR or USD only. |
+| `SPENDING_DAY_TIMEZONE` | `Asia/Kuala_Lumpur` |  |
 
 ## Known limitations
 
-- Only health endpoints exist; no `/api/v1` routes yet.
-- Starlette emits a deprecation warning that its test client prefers `httpx2`; httpx 0.28.1 is kept because the spec names HTTPX and `supabase` 2.33.0 requires `httpx<0.29`.
-- On Windows, `.venv\Scripts\python.exe` is a launcher that spawns a child process; stop a background server with `taskkill /PID <pid> /T /F`, not just the parent PID.
+- Sandbox only. MYR between Malaysian accounts, vault-without-purchase, merchant-initiated charges, payer email presence, Request-Id retention, duplicate-invoice enforcement and REVERSED resource shapes remain unverified live. Do not raise the replay window above 900 seconds until retention and invoice blocking are confirmed.
+- Rate limits, LLM budgets and reconciliation throttle reset on process restart and are per worker. Budget checks account for completed requests; concurrent requests can briefly exceed a budget.
+- Exhausted payment attempts keep reservations until a verified webhook or manual provider-side resolution; no manual-resolution API exists.
+- Firmware bearer patch and private `cap_clawpay` signing task, actual hardware/tunnel tests, and the dashboard frontend remain separate work. No external AP2 SDK is claimed: the stored gadget-cart mandate binds the verified cart signature.
+- Phone approval, voice, AgentCore, AG Grid, Bryntum, Render and Channel3 are out of scope. Hosting is plain uvicorn.
+- New SQL and pgTAP were reviewed/static-tested, not run against a database in this task.

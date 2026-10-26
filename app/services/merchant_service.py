@@ -23,9 +23,15 @@ from app.core.clock import Clock
 from app.core.config import Settings
 from app.integrations.a2a.client import A2AError, send_message
 from app.merchant_agents.app import create_merchant_app
-from app.repositories.protocols import A2AMessageRepository
-from app.schemas.merchant import MerchantErrorResponse, QuoteResponse, SearchProduct, SearchResponse
+from app.repositories.ports.events import A2AMessageRepository
+from app.schemas.merchant import (
+    MerchantErrorResponse,
+    QuoteResponse,
+    SearchProduct,
+    SearchResponse,
+)
 from app.services.audit_service import AuditService
+
 
 logger = logging.getLogger(__name__)
 

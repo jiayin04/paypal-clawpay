@@ -14,6 +14,7 @@ from typing import Any, Literal
 import anyio
 import httpx
 
+
 MAX_RESPONSE_BYTES = 64 * 1024
 
 Failure = Literal["timeout", "unavailable", "rejected"]

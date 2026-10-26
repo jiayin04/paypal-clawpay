@@ -96,6 +96,7 @@ async def create_payment_token(
     return PaymentToken(
         id=str(data["id"]),
         customer_id=customer_id,
+        payer_email=data.get("payment_source", {}).get("paypal", {}).get("email_address"),
     )
 
 

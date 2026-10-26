@@ -9,13 +9,10 @@ import base64
 import hashlib
 import json
 from typing import Any
-from unittest.mock import patch
 from uuid import uuid4
 
-import pytest
 
 from tests.fakes.app import Harness, make_harness
-from tests.fakes.merchants import ScriptedMerchant
 
 MILK2 = {"merchant_id": "grocer", "items": [{"sku": "GRC-MILK-1L", "qty": 2}]}
 

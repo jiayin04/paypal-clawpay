@@ -242,6 +242,10 @@ begin
     return;
   end if;
 
+  perform 1 from public.approval_challenges c
+    where c.order_id = p_order_id and c.consumed_at is null and c.invalidated_at is null
+    order by c.id for update;
+
   update public.orders o set status = 'CANCELLED' where o.id = p_order_id;
 
   update public.spending_records s set status = 'released'
@@ -314,6 +318,11 @@ begin
     return query select false, 'not_expirable'::text, v_status;
     return;
   end if;
+
+  -- Lock challenges in deterministic order before any spending row.
+  perform 1 from public.approval_challenges c
+    where c.order_id = p_order_id and c.consumed_at is null and c.invalidated_at is null
+    order by c.id for update;
 
   update public.orders o set status = 'EXPIRED' where o.id = p_order_id;
 
@@ -697,6 +706,36 @@ begin
     into v_order_status, v_quote_expires, v_total_minor, v_currency
   from public.orders o where o.id = v_order_id for update;
 
+  -- 3) challenge FOR UPDATE
+  select c.consumed_at, c.invalidated_at, c.expires_at, c.key_version, c.nonce, c.payload_sha256
+    into v_consumed, v_invalidated, v_expires, v_ch_kv, v_ch_nonce, v_ch_hash
+  from public.approval_challenges c where c.id = p_challenge_id for update;
+
+  if v_consumed is not null or v_invalidated is not null then
+    return query select false, 'challenge_consumed'::text, null::uuid, null::text, null::text;
+    return;
+  end if;
+
+  if v_expires <= now() then
+    return query select false, 'challenge_expired'::text, null::uuid, null::text, null::text;
+    return;
+  end if;
+
+  if v_dev_kv <> v_ch_kv then
+    return query select false, 'key_version_mismatch'::text, null::uuid, null::text, null::text;
+    return;
+  end if;
+
+  if v_ch_nonce <> p_nonce then
+    return query select false, 'nonce_mismatch'::text, null::uuid, null::text, null::text;
+    return;
+  end if;
+
+  if v_ch_hash <> p_payload_sha256 then
+    return query select false, 'hash_mismatch'::text, null::uuid, null::text, null::text;
+    return;
+  end if;
+
   if v_order_status <> 'AWAITING_APPROVAL' then
     return query select false, 'invalid_order_status'::text, null::uuid, null::text, null::text;
     return;
@@ -729,35 +768,6 @@ begin
     return;
   end if;
 
-  -- 3) challenge FOR UPDATE
-  select c.consumed_at, c.invalidated_at, c.expires_at, c.key_version, c.nonce, c.payload_sha256
-    into v_consumed, v_invalidated, v_expires, v_ch_kv, v_ch_nonce, v_ch_hash
-  from public.approval_challenges c where c.id = p_challenge_id for update;
-
-  if v_consumed is not null or v_invalidated is not null then
-    return query select false, 'challenge_consumed'::text, null::uuid, null::text, null::text;
-    return;
-  end if;
-
-  if v_expires <= now() then
-    return query select false, 'challenge_expired'::text, null::uuid, null::text, null::text;
-    return;
-  end if;
-
-  if v_dev_kv <> v_ch_kv then
-    return query select false, 'key_version_mismatch'::text, null::uuid, null::text, null::text;
-    return;
-  end if;
-
-  if v_ch_nonce <> p_nonce then
-    return query select false, 'nonce_mismatch'::text, null::uuid, null::text, null::text;
-    return;
-  end if;
-
-  if v_ch_hash <> p_payload_sha256 then
-    return query select false, 'hash_mismatch'::text, null::uuid, null::text, null::text;
-    return;
-  end if;
 
   -- 4) payment_methods FOR SHARE
   select pm.id, pm.vault_token_reference into v_pm_id, v_vault_token
@@ -1584,3 +1594,44 @@ revoke execute on function public.find_payment_method_by_state(text)
   from public, anon, authenticated;
 grant execute on function public.find_payment_method_by_state(text)
   to service_role;
+
+
+-- Phase 3 expiry sweep: skip busy devices/orders instead of blocking approvals.
+-- Discover ids unlocked, then honor device -> order -> challenges -> spending.
+create or replace function public.expire_stale_orders(p_limit integer)
+returns table (order_id uuid)
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  v_candidate record;
+  v_locked uuid;
+  v_ok boolean;
+begin
+  if p_limit is null or p_limit <= 0 then
+    raise exception 'expire_stale_orders: limit must be positive' using errcode = 'check_violation';
+  end if;
+  for v_candidate in
+    select o.id, o.device_id from public.orders o
+    where o.status in ('CREATED', 'QUOTED', 'AWAITING_APPROVAL')
+      and o.quote_expires_at <= now()
+    order by o.id limit p_limit
+  loop
+    if v_candidate.device_id is not null then
+      perform 1 from public.devices d where d.id = v_candidate.device_id for share skip locked;
+      if not found then continue; end if;
+    end if;
+    select o.id into v_locked from public.orders o
+      where o.id = v_candidate.id and o.status in ('CREATED', 'QUOTED', 'AWAITING_APPROVAL')
+        and o.quote_expires_at <= now()
+      order by o.id for update skip locked;
+    if not found then continue; end if;
+    select e.ok into v_ok from public.expire_order(v_locked) e;
+    if v_ok then order_id := v_locked; return next; end if;
+  end loop;
+end;
+$$;
+revoke execute on function public.expire_stale_orders(integer) from public, anon, authenticated;
+grant execute on function public.expire_stale_orders(integer) to service_role;

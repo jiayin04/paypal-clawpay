@@ -9,6 +9,7 @@ import jwt
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 
+
 SUPABASE_URL = "https://fakeproject.supabase.co"
 ISSUER = f"{SUPABASE_URL}/auth/v1"
 

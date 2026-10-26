@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+
 PARSE_ERROR = -32700
 INVALID_REQUEST = -32600
 METHOD_NOT_FOUND = -32601

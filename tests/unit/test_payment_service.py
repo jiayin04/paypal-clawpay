@@ -3,135 +3,14 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import Any
 
 import pytest
 
-from app.core.config import Settings
-from app.integrations.paypal.client import PayPalClient
-from app.integrations.paypal.errors import PaymentClassification
-from app.integrations.paypal import PayPalService
-from app.repositories.protocols import PaymentAttemptRecord
-from app.services.payment_service import PaymentService
 from tests.fakes.clock import FakeClock
 from tests.fakes.paypal import FakePayPalTransport
-from tests.fakes.store import InMemoryStore
+from tests.fakes.payments import make_payment_service as _setup_service, seed_order_and_attempt as _seed_order_and_attempt
 
 
-def _setup_service(
-    paypal_transport: FakePayPalTransport | None = None,
-    clock: FakeClock | None = None,
-) -> tuple[PaymentService, InMemoryStore, FakePayPalTransport, FakeClock]:
-    clock = clock or FakeClock()
-    store = InMemoryStore(clock)
-    transport = paypal_transport or FakePayPalTransport()
-    settings = Settings(
-        app_env="test",
-        supabase_url="http://supabase.test",
-        supabase_service_role_key="fake-key",
-        device_token_pepper="test-pepper",
-        internal_service_token="test-internal-service-token-at-least-32-chars",
-        paypal_client_id="fake-client-id",
-        paypal_client_secret="fake-client-secret",
-    )
-    client = PayPalClient(settings, transport=transport)
-    paypal_svc = PayPalService(client)
-    repos = store.repositories()
-    payment_service = PaymentService(
-        settings=settings,
-        clock=clock,
-        payment_repo=repos.payments,
-        order_repo=repos.orders,
-        paypal=paypal_svc,
-    )
-    return payment_service, store, transport, clock
-
-
-def _seed_order_and_attempt(
-    store: InMemoryStore,
-    *,
-    amount_minor: int = 2500,
-    currency: str = "MYR",
-    status: str = "initiated",
-    first_sent_at: dt.datetime | None = None,
-    capture_sent_at: dt.datetime | None = None,
-    capture_send_count: int = 0,
-) -> tuple[str, PaymentAttemptRecord]:
-    user_id = store.add_user()
-    store.add_payment_method(user_id, vault_token="vault-tok-123")
-    order_id = store.create_order(
-        user_id=user_id,
-        merchant_id=store.add_merchant(),
-        device_id=store.add_device(user_id),
-        total_minor=amount_minor,
-        currency=currency,
-        items=[{"name": "Item 1", "qty": 1, "line_total": "RM25.00"}],
-        quote_expires_at=store.now() + dt.timedelta(minutes=15),
-    )
-    # Reserve spending
-    store.spending_records.append({
-        "id": "spend-1",
-        "user_id": user_id,
-        "order_id": order_id,
-        "amount_minor": amount_minor,
-        "currency": currency,
-        "status": "reserved",
-        "spending_day": store.now().date().isoformat(),
-        "created_at": store.now(),
-        "updated_at": store.now(),
-    })
-    # Transition order to PAYMENT_PENDING
-    order = store.orders[order_id]
-    order["status"] = "PAYMENT_PENDING"
-
-    attempt_id = "attempt-1"
-    store.payment_attempts[attempt_id] = {
-        "id": attempt_id,
-        "order_id": order_id,
-        "payment_method_id": "pm-1",
-        "provider": "paypal",
-        "status": status,
-        "idempotency_key": f"clawpay-{order_id}-1",
-        "amount_minor": amount_minor,
-        "currency": currency,
-        "claimed_until": store.now() + dt.timedelta(seconds=30),
-        "first_sent_at": first_sent_at,
-        "capture_sent_at": capture_sent_at,
-        "capture_send_count": capture_send_count,
-        "completed_at": None,
-        "exhausted_at": None,
-        "provider_order_id": None,
-        "provider_capture_id": None,
-        "provider_status": None,
-        "failure_code": None,
-        "vault_token_reference": "vault-tok-123",
-        "created_at": store.now(),
-        "updated_at": store.now(),
-    }
-    att_rec = PaymentAttemptRecord(
-        id=attempt_id,
-        order_id=order_id,
-        user_id=user_id,
-        payment_method_id="pm-1",
-        provider="paypal",
-        status=status,
-        idempotency_key=f"clawpay-{order_id}-1",
-        amount_minor=amount_minor,
-        currency=currency,
-        claimed_until=store.now() + dt.timedelta(seconds=30),
-        first_sent_at=first_sent_at,
-        capture_sent_at=capture_sent_at,
-        capture_send_count=capture_send_count,
-        completed_at=None,
-        exhausted_at=None,
-        provider_order_id=None,
-        provider_capture_id=None,
-        provider_status=None,
-        failure_code=None,
-        vault_token_reference="vault-tok-123",
-        created_at=store.now(),
-    )
-    return order_id, att_rec
 
 
 @pytest.mark.anyio
@@ -139,7 +18,7 @@ async def test_execute_refuses_non_initiated_attempt() -> None:
     svc, store, transport, _ = _setup_service()
     _, attempt = _seed_order_and_attempt(store, status="completed")
     res = await svc.execute(attempt)
-    assert res.status == "completed"
+    assert res.status == "no_result"
     assert len(transport.calls) == 0
 
 
@@ -151,7 +30,7 @@ async def test_execute_oauth_preflight_failure_leaves_attempt_initiated() -> Non
     order_id, attempt = _seed_order_and_attempt(store)
 
     res = await svc.execute(attempt)
-    assert res.status == "pending"
+    assert res.status == "no_result"
 
     # Attempt remains initiated, first_sent_at is null
     raw_attempt = store.payment_attempts[attempt.id]
@@ -399,3 +278,25 @@ async def test_conflicting_failure_after_completed_ignored() -> None:
 
     events = [a["event"] for a in store.audit_logs]
     assert "payment.conflicting_result" in events
+
+
+@pytest.mark.anyio
+async def test_payment_rpc_deadlock_retries_once():
+    svc,store,transport,_ = _setup_service()
+    oid,attempt = _seed_order_and_attempt(store)
+    store.fail_next('mark_attempt_sent','40P01')
+    result = await svc.execute(attempt)
+    assert result.status == 'completed'
+    assert store.calls.count('mark_attempt_sent') == 2
+    assert len([c for c in transport.calls if c.path == '/v2/checkout/orders']) == 1
+
+@pytest.mark.anyio
+async def test_replayed_capture_422_never_releases_reservation():
+    svc,store,transport,_ = _setup_service()
+    oid,attempt = _seed_order_and_attempt(store,capture_sent_at=store.now(),capture_send_count=1)
+    transport.orders_mode = 'approved_no_capture'
+    transport.custom_routes['/v2/checkout/orders/ORD-APPR-001/capture'] = (422,{'name':'UNPROCESSABLE_ENTITY','details':[{'issue':'ORDER_ALREADY_CAPTURED'}]})
+    result = await svc.execute(attempt)
+    assert result.status == 'uncertain'
+    assert store.spending_records[0]['status'] == 'reserved'
+    assert store.orders[oid]['status'] == 'REQUIRES_RECONCILIATION'

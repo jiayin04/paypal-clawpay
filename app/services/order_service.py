@@ -21,17 +21,15 @@ from app.domain.canonical import cart_sha256
 from app.domain.money import format_display
 from app.domain.order_state import to_api_status
 from app.repositories.errors import RepositoryError, call_rpc_with_retry
-from app.repositories.protocols import (
-    MerchantRepository,
-    OrderRecord,
-    OrderRepository,
-    PaymentMethodRepository,
-    PaymentRepository,
-)
+from app.repositories.ports.merchants import MerchantRepository
+from app.repositories.ports.orders import OrderRecord, OrderRepository
+from app.repositories.ports.payment_methods import PaymentMethodRepository
+from app.repositories.ports.payments import PaymentRepository
 from app.services.context import DeviceContext
 from app.services.errors import ToolError
 from app.services.merchant_service import A2ALog, MerchantFailure, MerchantService
 from app.services.spending_service import SpendingService
+
 
 logger = logging.getLogger(__name__)
 
@@ -271,6 +269,7 @@ class OrderService:
             try:
                 att = await self._payment_repo.get_attempt_for_order(order_id)
                 if att:
+                    approved_at = iso_z(att.created_at)
                     paypal_status = att.provider_status
                     paid_at = iso_z(att.completed_at)
             except Exception:
