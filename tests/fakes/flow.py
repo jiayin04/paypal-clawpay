@@ -9,9 +9,12 @@ from tests.fakes.paypal import FakePayPalTransport
 
 CART={'merchant_id':'grocer','items':[{'sku':'GRC-MILK-1L','qty':2}]}
 
-def setup_flow(mode='completed',**settings):
-    paypal=FakePayPalTransport(); paypal.orders_mode=mode
-    h=make_harness(paypal_transport=paypal,paypal_client_id='fake',paypal_client_secret='fake-secret',paypal_webhook_id='WH-1',**settings)
+def setup_flow(mode='completed',paypal=None,**settings):
+    if paypal is None:
+        paypal=FakePayPalTransport(); paypal.orders_mode=mode
+    if 'paypal_agent_transport' not in settings:
+        settings={'paypal_transport':paypal,'paypal_client_id':'fake','paypal_client_secret':'fake-secret',**settings}
+    h=make_harness(paypal_webhook_id='WH-1',**settings)
     uid=h.new_user(); private,pem=_generate_p256()
     r=h.client.post('/api/v1/devices/register',headers={'Authorization':'Bearer '+ADMIN_TOKEN},json={'user_id':uid,'device_name':'flow-device','public_key_pem':pem,'key_version':1})
     assert r.status_code==201,r.text

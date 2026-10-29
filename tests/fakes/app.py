@@ -112,6 +112,7 @@ def make_harness(
     merchant_transports: dict[str, httpx.AsyncBaseTransport] | None = None,
     paypal_transport: httpx.AsyncBaseTransport | None = None,
     paypal_gateway: Any = None,
+    paypal_agent_transport: httpx.AsyncBaseTransport | None = None,
     llm_client: httpx.AsyncClient | None = None,
     raise_server_exceptions: bool = True,
     **settings_overrides: Any,
@@ -129,6 +130,7 @@ def make_harness(
         merchant_transports=merchant_transports,
         paypal_gateway=paypal_gateway,
         paypal_transport=paypal_transport,
+        paypal_agent_transport=paypal_agent_transport,
         llm_client=llm_client,
     )
     app = create_app(settings, services=services, start_background=False)

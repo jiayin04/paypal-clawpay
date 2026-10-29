@@ -28,6 +28,7 @@ _UPSTREAM_URL_FIELDS = {
     "grocer_agent_endpoint": "GROCER_AGENT_ENDPOINT",
     "electronics_agent_endpoint": "ELECTRONICS_AGENT_ENDPOINT",
     "llm_proxy_upstream_base_url": "LLM_PROXY_UPSTREAM_BASE_URL",
+    "paypal_agent_endpoint": "PAYPAL_AGENT_ENDPOINT",
 }
 
 # Optional fields where an empty env value (e.g. "SUPABASE_URL=") means "unset".
@@ -51,6 +52,7 @@ _OPTIONAL_FIELDS = (
     "llm_proxy_model",
     "internal_service_token",
     "metrics_token",
+    "paypal_agent_token",
 )
 
 
@@ -100,7 +102,8 @@ class Settings(BaseSettings):
     # Devices / agents
     gadget_approval_public_key_registry: str | None = None
     agentcore_region: str | None = None
-    paypal_agent_endpoint: str | None = None
+    paypal_agent_endpoint: str | None = None  # A2A PayPal agent; unset = call PayPal directly
+    paypal_agent_token: SecretStr | None = None  # shared bearer between ClawPay and the PayPal agent
     grocer_agent_endpoint: str | None = None
     electronics_agent_endpoint: str | None = None
     internal_service_token: SecretStr | None = None
@@ -262,6 +265,11 @@ class Settings(BaseSettings):
         token = self.internal_service_token
         if token is not None and len(token.get_secret_value()) < _MIN_INTERNAL_TOKEN_LENGTH:
             raise ValueError("INTERNAL_SERVICE_TOKEN must be at least 32 characters")
+        agent_token = self.paypal_agent_token
+        if agent_token is not None and len(agent_token.get_secret_value()) < _MIN_INTERNAL_TOKEN_LENGTH:
+            raise ValueError("PAYPAL_AGENT_TOKEN must be at least 32 characters")
+        if self.paypal_agent_endpoint and agent_token is None:
+            raise ValueError("PAYPAL_AGENT_TOKEN must be set when PAYPAL_AGENT_ENDPOINT is set")
         metrics = self.metrics_token
         if metrics is not None and len(metrics.get_secret_value()) < _MIN_INTERNAL_TOKEN_LENGTH:
             raise ValueError("METRICS_TOKEN must be at least 32 characters")
@@ -297,7 +305,14 @@ class Settings(BaseSettings):
         return f"{self.supabase_url}/auth/v1" if self.supabase_url else None
 
     @property
+    def paypal_agent_enabled(self) -> bool:
+        return bool(self.paypal_agent_endpoint) and self.paypal_agent_token is not None
+
+    @property
     def paypal_configured(self) -> bool:
+        """PayPal is reachable: through the PayPal agent, or directly with credentials."""
+        if self.paypal_agent_enabled:
+            return True
         return bool(self.paypal_client_id) and self.paypal_client_secret is not None
 
     def secret_values(self) -> list[str]:

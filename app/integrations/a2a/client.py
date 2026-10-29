@@ -45,12 +45,14 @@ def build_envelope(correlation_id: str, data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def _post(client: httpx.AsyncClient, url: str, envelope: dict[str, Any]) -> bytes:
+async def _post(
+    client: httpx.AsyncClient, url: str, envelope: dict[str, Any], headers: dict[str, str] | None = None
+) -> bytes:
     async with client.stream(
         "POST",
         url,
         json=envelope,
-        headers={"Accept": "application/json", **outbound_headers()},
+        headers={"Accept": "application/json", **outbound_headers(), **(headers or {})},
     ) as response:
         if response.status_code != 200:
             raise A2AError("unavailable", f"http_{response.status_code}")
@@ -76,12 +78,14 @@ async def send_message(
     correlation_id: str,
     data: dict[str, Any],
     timeout: float,
+    *,
+    headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Send one request and return the first ``data`` part of the agent message."""
     envelope = build_envelope(correlation_id, data)
     try:
         with anyio.fail_after(timeout):
-            raw = await _post(client, url, envelope)
+            raw = await _post(client, url, envelope, headers)
     except TimeoutError:
         raise A2AError("timeout", "timeout") from None
     except httpx.TimeoutException:

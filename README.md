@@ -77,6 +77,25 @@ JWT dashboard reads require `SUPABASE_PUBLISHABLE_KEY`; unset → `503 dashboard
 | `GET /api/v1/payment-methods/paypal/return` | High-entropy single-use hashed state, 30-minute expiry, 10 invalid states/min/IP, stored setup-token reference, no-store/no-referrer page |
 | `/docs`, `/redoc`, `/openapi.json` | Disabled in production |
 
+## Multi-agent mode: PayPal agent
+
+ClawPay can delegate every PayPal call to a separate A2A service, `app/paypal_agent`. ClawPay still owns the decision to pay: the device signature, spending policy and reservation, the per-order `PayPal-Request-Id`, and classification of results. The agent only executes the call it is given with that request id and reports PayPal's answer. It holds the PayPal Sandbox credentials, requires `PAYPAL_AGENT_TOKEN`, is never mounted on the main app and is not reachable by the device LLM.
+
+```text
+device LLM --MCP--> ClawPay --A2A--> Grocer / Electronics merchant agents
+                       |
+                       +--A2A (bearer)--> PayPal agent --REST--> PayPal Sandbox
+```
+
+Run both (two terminals; the agent needs `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_AGENT_TOKEN` in its environment):
+
+```powershell
+uv run uvicorn --factory app.paypal_agent.app:paypal_agent_app --host 127.0.0.1 --port 8201 --no-access-log
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --no-access-log
+```
+
+with ClawPay's env containing `PAYPAL_AGENT_ENDPOINT=http://127.0.0.1:8201/a2a` and the same `PAYPAL_AGENT_TOKEN`. In that mode ClawPay needs no PayPal credentials. Only PayPal's own error responses (status, name, issue, debug_id) cross back as API errors; an unreachable, unauthorised or misbehaving agent is treated like a PayPal network failure (attempt stays unsent or `requires_reconciliation`), so an agent fault can never release a reservation or produce a second charge. The agent is trusted with the credentials: bind it to 127.0.0.1 or a private network. Agent calls appear in `/metrics` as `clawpay_paypal_requests_total{operation="agent:<op>"}` and carry the caller's `X-Request-ID`, so ClawPay and agent logs join on `request_id`.
+
 ## Observability
 
 - **Request ids.** Every response carries `X-Request-ID` (except `/llm/v1`, whose contract allows only two headers). A caller-supplied `X-Request-ID` matching `^[A-Za-z0-9._-]{8,64}$` is reused, so a tunnel or gateway id flows through; anything else is replaced. The id is forwarded to merchant agents on every A2A call.
@@ -127,7 +146,8 @@ See `.env.example` for defaults and explanations. Money uses integer minor units
 | `RECONCILE_REPLAY_WINDOW_SECONDS` | `900` |  |
 | `GADGET_APPROVAL_PUBLIC_KEY_REGISTRY` | `` |  |
 | `AGENTCORE_REGION` | `` |  |
-| `PAYPAL_AGENT_ENDPOINT` | `` |  |
+| `PAYPAL_AGENT_ENDPOINT` | `` | A2A URL of the PayPal agent (e.g. `http://127.0.0.1:8201/a2a`). Empty = ClawPay calls PayPal directly. |
+| `PAYPAL_AGENT_TOKEN` | `` | Shared bearer between ClawPay and the PayPal agent, ≥ 32 chars. Required when the endpoint is set and by the agent itself. |
 | `GROCER_AGENT_ENDPOINT` | `` | standalone: uv run uvicorn --factory app.merchant_agents.app:grocer_app --host 127.0.0.1 --port 8101 then GROCER_AGENT_ENDPOINT=http://127.0.0.1:8101/a2a. Only https:// or http://127.0.0.1 / http://localhost are accepted. |
 | `ELECTRONICS_AGENT_ENDPOINT` | `` |  |
 | `MERCHANT_AGENT_TIMEOUT_SECONDS` | `8` |  |

@@ -18,6 +18,7 @@ from app.core.config import Settings
 from app.core.exceptions import ServiceUnavailable
 from app.core.security import SlidingWindowLimiter
 from app.integrations.paypal import PayPalClient, PayPalGateway, PayPalService
+from app.integrations.paypal.agent_gateway import A2APayPalGateway
 from app.integrations.supabase import client as supabase_client
 from app.repositories.bundle import Repositories
 from app.repositories.supabase.approvals import SupabaseApprovalRepository
@@ -124,6 +125,7 @@ def build_services(
     merchant_transports: Mapping[str, httpx.AsyncBaseTransport] | None = None,
     paypal_gateway: PayPalGateway | None = None,
     paypal_transport: httpx.AsyncBaseTransport | None = None,
+    paypal_agent_transport: httpx.AsyncBaseTransport | None = None,
     llm_client: httpx.AsyncClient | None = None,
 ) -> Services:
     clock = clock or SystemClock()
@@ -132,8 +134,13 @@ def build_services(
     spending = SpendingService(settings, repos.spending)
     merchants = MerchantService(settings, clock, audit, repos.a2a_messages, merchant_transports)
     if paypal_gateway is None:
-        paypal_client = PayPalClient(settings, transport=paypal_transport)
-        paypal_gateway = PayPalService(paypal_client)
+        if settings.paypal_agent_enabled:
+            # Multi-agent mode: the PayPal agent holds the credentials; ClawPay keeps
+            # policy, idempotency keys and classification.
+            paypal_gateway = A2APayPalGateway(settings, transport=paypal_agent_transport)
+        else:
+            paypal_client = PayPalClient(settings, transport=paypal_transport)
+            paypal_gateway = PayPalService(paypal_client)
     payments = PaymentService(settings, clock, repos.payments, repos.orders, paypal_gateway, audit=audit)
     mono = clock.monotonic
     limiters = Limiters(

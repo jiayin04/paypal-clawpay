@@ -43,6 +43,30 @@ async def _repository_error_handler(_: Request, exc: RepositoryError) -> JSONRes
     )
 
 
+def _add_bearer_to_openapi(app: FastAPI) -> None:
+    """Swagger "Authorize" button. Auth is read from the Authorization header by
+    the route dependencies (JWT, cpd_ device token or admin token); this only
+    documents it so /docs can send it."""
+    from fastapi.openapi.utils import get_openapi
+
+    def openapi() -> dict:
+        if app.openapi_schema is None:
+            schema = get_openapi(title=app.title, version=app.version, routes=app.routes)
+            schema.setdefault("components", {})["securitySchemes"] = {
+                "bearer": {
+                    "type": "http",
+                    "scheme": "bearer",
+                    "description": "Supabase user JWT, device token (cpd_...) or INTERNAL_SERVICE_TOKEN, "
+                    "depending on the endpoint.",
+                }
+            }
+            schema["security"] = [{"bearer": []}]
+            app.openapi_schema = schema
+        return app.openapi_schema
+
+    app.openapi = openapi  # type: ignore[method-assign]
+
+
 def create_app(
     settings: Settings | None = None,
     *,
@@ -94,6 +118,7 @@ def create_app(
     app.state.readiness_lock = asyncio.Lock()
 
     register_exception_handlers(app)
+    _add_bearer_to_openapi(app)
     app.add_exception_handler(RepositoryError, _repository_error_handler)  # type: ignore[arg-type]
     app.add_middleware(RequestContextMiddleware)
     app.include_router(health.router)
