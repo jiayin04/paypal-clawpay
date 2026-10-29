@@ -98,6 +98,14 @@ Expected:
 - `/health` → `{"status":"ok","service":"clawpay-middleware",...}`
 - `/health/ready` → `200 {"status":"ready","checks":{"supabase":"ok"}}` after A2 and A3. `503` with `not_configured` means the env vars are missing; `error` means unreachable or the migration is not applied.
 
+Logs and metrics: every response has an `X-Request-ID` header, and each log line shows the same id in brackets, so you can find all lines for one request. Set `LOG_FORMAT=json` to ship logs to a collector. To scrape metrics, set `METRICS_TOKEN` (32+ chars) and run:
+
+```powershell
+curl.exe -s -H "Authorization: Bearer <METRICS_TOKEN>" http://127.0.0.1:8000/metrics
+```
+
+Prometheus scrape config: `bearer_token` = that value, `metrics_path: /metrics`. Keep `/metrics` off the public tunnel if you can (it reveals traffic shape, though no ids or secrets).
+
 Stop the server with `Ctrl+C`. If it runs in the background, use `taskkill /PID <pid> /T /F` (the venv launcher spawns a child process).
 
 ### A5. Enable device integration settings — Implemented

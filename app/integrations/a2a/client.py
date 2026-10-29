@@ -14,6 +14,8 @@ from typing import Any, Literal
 import anyio
 import httpx
 
+from app.core.observability import outbound_headers
+
 
 MAX_RESPONSE_BYTES = 64 * 1024
 
@@ -48,7 +50,7 @@ async def _post(client: httpx.AsyncClient, url: str, envelope: dict[str, Any]) -
         "POST",
         url,
         json=envelope,
-        headers={"Accept": "application/json"},
+        headers={"Accept": "application/json", **outbound_headers()},
     ) as response:
         if response.status_code != 200:
             raise A2AError("unavailable", f"http_{response.status_code}")

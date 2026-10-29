@@ -46,6 +46,7 @@ RLS scopes reads to the user; explicit column grants hide tokens, provider refer
 | Route | Authentication / purpose |
 | --- | --- |
 | `GET /health`, `GET /health/ready` | See unauthenticated table below |
+| `GET /metrics` | `METRICS_TOKEN` bearer; Prometheus text format; 404 when the token is unset |
 | `POST /mcp` | `cpd_` bearer; fresh initialize per tool call; 4 tools only |
 | `POST /mcp/{token}` | Optional demo fallback, `MCP_PATH_TOKEN_ENABLED=true` |
 | `POST /api/v1/devices/register` | Admin token; owner JWT only with explicit registration flag |
@@ -76,6 +77,14 @@ JWT dashboard reads require `SUPABASE_PUBLISHABLE_KEY`; unset → `503 dashboard
 | `GET /api/v1/payment-methods/paypal/return` | High-entropy single-use hashed state, 30-minute expiry, 10 invalid states/min/IP, stored setup-token reference, no-store/no-referrer page |
 | `/docs`, `/redoc`, `/openapi.json` | Disabled in production |
 
+## Observability
+
+- **Request ids.** Every response carries `X-Request-ID` (except `/llm/v1`, whose contract allows only two headers). A caller-supplied `X-Request-ID` matching `^[A-Za-z0-9._-]{8,64}$` is reused, so a tunnel or gateway id flows through; anything else is replaced. The id is forwarded to merchant agents on every A2A call.
+- **Log context.** Every log line written while handling a request (background tasks included) carries `request_id` and, once known, `device_id`, `user_id` and `order_id`. Reconciler ticks get their own `reconcile-<id>`. Text format shows `[request_id]`; `LOG_FORMAT=json` writes one JSON object per line for Loki, Datadog, CloudWatch or similar. Redaction still applies before formatting; bodies, tokens, signatures and PayPal payloads are never logged.
+- **Access log.** One `app.access` line per request with method, route template, status and latency. Run uvicorn with `--no-access-log` to avoid the duplicate uvicorn line (whose raw path is redacted anyway).
+- **Metrics.** `GET /metrics` (bearer `METRICS_TOKEN`) exposes `clawpay_http_requests_total` / `_duration_seconds` by route template, `clawpay_auth_failures_total`, `clawpay_audit_events_total`, `clawpay_payment_results_total{source,classification}`, `clawpay_paypal_requests_total` / `_duration_seconds` by operation (ids stripped), `clawpay_merchant_requests_total` / `_duration_seconds`, and reconciler runs/claims. Labels never hold ids, tokens or amounts. Counters are per process and reset on restart (single worker assumed).
+- **Business audit trail.** `audit_logs`, `conversation_events` and `a2a_messages` remain the per-order record; read them through `GET /api/v1/orders/{id}/timeline` and `GET /api/v1/audit-events`. Grep JSON logs by `order_id` to join the two.
+
 ## Payment behavior
 
 `create_order` validates merchant prices and stores an awaiting-approval DB order; it makes no PayPal call. Orders above 10000 minor units are blocked because phone approval is deferred. Approval reserves daily capacity and creates the mandate and payment attempt atomically. PayPal orders are created only after signature verification. Capture completion commits spending once; definitive failure releases it. Pending/uncertain outcomes hold the reservation. Polling is primary; webhooks are optional on quick tunnels. Late completion changes `payment_failed` to `paid` using the original approval day's accounting. Refunds and reversals are audited and **do not restore capacity**.
@@ -101,6 +110,8 @@ See `.env.example` for defaults and explanations. Money uses integer minor units
 | `APP_HOST` | `0.0.0.0` |  |
 | `APP_PORT` | `8000` |  |
 | `LOG_LEVEL` | `INFO` |  |
+| `LOG_FORMAT` | `text` | `text` or `json` (one object per line with `request_id`, `device_id`, `user_id`, `order_id`). |
+| `METRICS_TOKEN` | `` | Bearer token for `GET /metrics`. Empty = disabled (404). At least 32 characters. |
 | `SUPABASE_URL` | `` |  |
 | `SUPABASE_PUBLISHABLE_KEY` | `` | Publishable key (sb_publishable_...) for RLS-scoped dashboard reads. SUPABASE_ANON_KEY is accepted as a legacy alias; PUBLISHABLE wins if both are set. |
 | `SUPABASE_SERVICE_ROLE_KEY` | `` |  |

@@ -10,6 +10,7 @@ from typing import Any
 from pydantic import ValidationError
 from starlette.background import BackgroundTasks
 
+from app.core import observability
 from app.domain.money import format_display
 from app.integrations.mcp import jsonrpc, tools as mcp_tools
 from app.services.container import Services
@@ -121,16 +122,21 @@ class McpServer:
                     background=background,
                 )
             elif name == "get_order_status":
+                observability.bind(order_id=args.order_id)
                 payload = await services.orders.get_order_status(device, args.order_id)
             else:
                 payload = await services.spending.tool_summary(device.user_id)
         except ToolError as exc:
+            logger.info("Tool %s refused: %s", name, exc.code)
             self._record(background, device, name, call_args, None, exc.code, started)
             return envelope(mcp_tools.error_result(exc.code, exc.message))
         except Exception:
             logger.exception("Tool %s failed", name)
             self._record(background, device, name, call_args, None, "internal_error", started)
             return envelope(mcp_tools.error_result("internal_error"))
+        if isinstance(payload.get("order_id"), str):
+            observability.bind(order_id=payload["order_id"])
+        logger.info("Tool %s ok", name)
         self._record(background, device, name, call_args, payload, None, started)
         return envelope(mcp_tools.tool_result(payload, is_error=False))
 

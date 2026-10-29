@@ -4,18 +4,35 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from typing import Any, Mapping
 
 import httpx
 
 from app.core.config import Settings
+from app.core.metrics import METRICS
 from app.integrations.paypal.errors import PayPalApiError, PayPalAuthError, PayPalUnavailable
 
 
 logger = logging.getLogger(__name__)
 
 SANDBOX_BASE_URL = "https://api-m.sandbox.paypal.com"
+
+_VERSION_SEGMENT = re.compile(r"^v\d+$")
+
+
+def operation_label(method: str, path: str) -> str:
+    """Metric label without provider ids: ``POST v2/checkout/orders/{id}/capture``."""
+    segments = [
+        s if _VERSION_SEGMENT.match(s) or not any(c.isdigit() for c in s) else "{id}"
+        for s in path.strip("/").split("/")
+    ]
+    return f"{method.upper()} {'/'.join(segments)}"
+
+
+def _outcome(status: int) -> str:
+    return f"{status // 100}xx"
 
 
 class PayPalClient:
@@ -84,6 +101,7 @@ class PayPalClient:
                 raise PayPalAuthError("PayPal client_id and secret must be configured")
 
             url = f"{self._base_url}/v1/oauth2/token"
+            started = time.perf_counter()
             try:
                 async with self._http_client() as client:
                     resp = await client.post(
@@ -93,11 +111,14 @@ class PayPalClient:
                         headers={"Accept": "application/json", "Accept-Language": "en_US"},
                     )
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
+                METRICS.paypal_requests.inc("POST v1/oauth2/token", "network_error")
                 logger.warning("PayPal OAuth token network error: %s", type(exc).__name__)
                 raise PayPalUnavailable(f"PayPal OAuth unreachable: {type(exc).__name__}") from exc
             except Exception as exc:
                 raise PayPalAuthError(f"PayPal OAuth request failed: {exc}") from exc
 
+            METRICS.paypal_requests.inc("POST v1/oauth2/token", _outcome(resp.status_code))
+            METRICS.paypal_duration.observe(time.perf_counter() - started, "POST v1/oauth2/token")
             if resp.status_code != 200:
                 debug_id = resp.headers.get("PayPal-Debug-Id") or resp.headers.get("paypal-debug-id")
                 logger.warning("PayPal OAuth failed status=%d debug_id=%s", resp.status_code, debug_id)
@@ -168,6 +189,8 @@ class PayPalClient:
         req_headers = dict(headers or {})
         req_headers["Authorization"] = f"Bearer {token}"
         req_headers.setdefault("Accept", "application/json")
+        operation = operation_label(method, path)
+        started = time.perf_counter()
 
         try:
             async with self._http_client() as client:
@@ -180,10 +203,14 @@ class PayPalClient:
                     params=params,
                 )
         except (httpx.TimeoutException, httpx.NetworkError) as exc:
-            logger.warning("PayPal request timed out or network error: %s", type(exc).__name__)
+            METRICS.paypal_requests.inc(operation, "network_error")
+            logger.warning("PayPal %s timed out or network error: %s", operation, type(exc).__name__)
             raise PayPalUnavailable(f"PayPal request failed: {type(exc).__name__}") from exc
         except Exception as exc:
             raise PayPalUnavailable(f"PayPal unexpected client error: {exc}") from exc
+
+        METRICS.paypal_requests.inc(operation, _outcome(resp.status_code))
+        METRICS.paypal_duration.observe(time.perf_counter() - started, operation)
 
         # Handle 401: clear token and retry once
         if resp.status_code == 401 and retry_401:

@@ -26,3 +26,5 @@ supabase/.temp/
 .idea/
 .DS_Store
 Thumbs.db
+
+.claude/

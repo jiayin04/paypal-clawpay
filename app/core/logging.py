@@ -13,13 +13,15 @@ import re
 from collections.abc import Iterable
 from typing import Any, TYPE_CHECKING
 
+from app.core.observability import ContextFilter, JsonFormatter
+
 
 if TYPE_CHECKING:
     from app.core.config import Settings
 
 REDACTED = "[REDACTED]"
 _MIN_SECRET_LENGTH = 8
-_LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"
+_LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s [%(request_id)s] %(message)s"
 _UVICORN_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access")
 
 _SENSITIVE_KEY = r"[\w-]*(?:secret|token|password|passwd|api[_-]?key|service[_-]?role|authorization)[\w-]*"
@@ -165,9 +167,12 @@ def configure_logging(settings: Settings) -> None:
     )
     if handler is None:
         handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter(_LOG_FORMAT))
         handler._clawpay_handler = True  # type: ignore[attr-defined]
         root.addHandler(handler)
+    # Text for local runs, JSON lines for log shipping (LOG_FORMAT=json).
+    handler.setFormatter(JsonFormatter() if settings.log_format == "json" else logging.Formatter(_LOG_FORMAT))
+    if not any(isinstance(f, ContextFilter) for f in handler.filters):
+        handler.addFilter(ContextFilter())
 
     redacting = RedactingFilter(settings.secret_values())
     _install_record_factory(redacting)

@@ -50,6 +50,7 @@ _OPTIONAL_FIELDS = (
     "llm_proxy_upstream_api_key",
     "llm_proxy_model",
     "internal_service_token",
+    "metrics_token",
 )
 
 
@@ -69,6 +70,8 @@ class Settings(BaseSettings):
     app_host: str = "0.0.0.0"
     app_port: int = Field(8000, ge=1, le=65535)
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    log_format: Literal["text", "json"] = "text"  # json = one object per line for log shipping
+    metrics_token: SecretStr | None = None  # bearer token for GET /metrics; unset = endpoint disabled
 
     # Supabase (service-role key is server-side only)
     supabase_url: str | None = None
@@ -187,6 +190,11 @@ class Settings(BaseSettings):
             )
         return value
 
+    @field_validator("log_format", mode="before")
+    @classmethod
+    def _lower_log_format(cls, value: Any) -> Any:
+        return value.strip().lower() if isinstance(value, str) else value
+
     @field_validator("log_level", mode="before")
     @classmethod
     def _upper_log_level(cls, value: Any) -> Any:
@@ -254,6 +262,9 @@ class Settings(BaseSettings):
         token = self.internal_service_token
         if token is not None and len(token.get_secret_value()) < _MIN_INTERNAL_TOKEN_LENGTH:
             raise ValueError("INTERNAL_SERVICE_TOKEN must be at least 32 characters")
+        metrics = self.metrics_token
+        if metrics is not None and len(metrics.get_secret_value()) < _MIN_INTERNAL_TOKEN_LENGTH:
+            raise ValueError("METRICS_TOKEN must be at least 32 characters")
         if self.public_base_url is not None:
             parts = urlsplit(self.public_base_url.strip())
             local_ok = (

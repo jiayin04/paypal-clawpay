@@ -9,6 +9,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query
 
 from app.api.dependencies import ServicesDep, require_user, require_user_service_only
+from app.core import observability
 from app.core.exceptions import ApiError
 from app.domain.order_state import to_api_status
 from app.schemas.devices import UUID_RE
@@ -27,7 +28,9 @@ def _not_found() -> ApiError:
 def _order_id(value: str) -> str:
     if not _UUID.match(value):
         raise _not_found()
-    return value.lower()
+    order_id = value.lower()
+    observability.bind(order_id=order_id)
+    return order_id
 
 
 def _with_api_status(row: dict[str, Any]) -> dict[str, Any]:

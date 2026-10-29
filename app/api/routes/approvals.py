@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from app.api.body import read_limited_body
 from app.api.dependencies import ServicesDep, require_device
+from app.core import observability
 from app.core.exceptions import ApiError
 from app.schemas.approvals import (
     ApprovalChallengeResponse,
@@ -28,7 +29,9 @@ _UUID = re.compile(UUID_RE)
 def _order_id(value: str) -> str:
     if not _UUID.match(value):
         raise ApiError(404, "order_not_found", "Order not found.")
-    return value.lower()
+    order_id = value.lower()
+    observability.bind(order_id=order_id)
+    return order_id
 
 
 def _device_id(value: str) -> str:

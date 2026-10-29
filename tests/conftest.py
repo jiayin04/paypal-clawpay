@@ -19,6 +19,7 @@ _ENV_PREFIXES = (
     "CLIENT_IP_",
     "DEVICE_OWNER_",
     "CLAWPAY_",
+    "METRICS_",
 )
 _ENV_NAMES = {
     "APP_ENV",
@@ -26,6 +27,7 @@ _ENV_NAMES = {
     "APP_HOST",
     "APP_PORT",
     "LOG_LEVEL",
+    "LOG_FORMAT",
     "INTERNAL_SERVICE_TOKEN",
     "GROCER_AGENT_ENDPOINT",
     "ELECTRONICS_AGENT_ENDPOINT",

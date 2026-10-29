@@ -18,6 +18,7 @@ from app.api.routes import (
     health,
     llm_proxy,
     mcp,
+    metrics,
     orders,
     payment_methods,
     spending,
@@ -26,6 +27,7 @@ from app.api.routes import (
 from app.core.config import Settings, get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
+from app.core.observability import RequestContextMiddleware
 from app.repositories.errors import RepositoryError
 from app.services.container import Services, build_services
 
@@ -93,7 +95,9 @@ def create_app(
 
     register_exception_handlers(app)
     app.add_exception_handler(RepositoryError, _repository_error_handler)  # type: ignore[arg-type]
+    app.add_middleware(RequestContextMiddleware)
     app.include_router(health.router)
+    app.include_router(metrics.router)
     app.include_router(devices.router)
     app.include_router(orders.router)
     app.include_router(approvals.router)

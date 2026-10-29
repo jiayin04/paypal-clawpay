@@ -8,6 +8,7 @@ import anyio
 
 from app.core.clock import Clock
 from app.core.config import Settings
+from app.core.metrics import METRICS
 from app.integrations.paypal import PaymentClassification, classify
 from app.integrations.paypal.gateway import PayPalGateway
 from app.repositories.errors import with_rpc_retry
@@ -70,6 +71,12 @@ class PaymentService:
     ) -> None:
         if result.status == "no_result":
             return
+        METRICS.payment_results.inc(source, result.status)
+        logger.info(
+            "Payment result %s via %s (provider_status=%s failure_code=%s)",
+            result.status, source, result.provider_status, result.failure_code,
+            extra={"order_id": attempt.order_id},
+        )
         if self._audit and result.failure_code in ("amount_mismatch", "currency_mismatch"):
             await self._audit.record("payment.conflicting_result",user_id=attempt.user_id,actor_type="system",entity_type="order",entity_id=attempt.order_id,details={"reason":result.failure_code})
         if self._audit and result.provider_status in ("REFUNDED", "PARTIALLY_REFUNDED"):

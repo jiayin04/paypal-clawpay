@@ -11,6 +11,7 @@ import logging
 from collections.abc import Mapping
 from typing import Any
 
+from app.core.metrics import METRICS
 from app.repositories.ports.events import AuditRepository
 
 
@@ -41,6 +42,7 @@ class AuditService:
             "entity_id": entity_id,
             "details": dict(details or {}),
         }
+        METRICS.audit_events.inc(event_type)
         try:
             await self._repo.insert(row)
         except Exception as exc:

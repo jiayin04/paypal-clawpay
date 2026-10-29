@@ -10,6 +10,8 @@ from fastapi import BackgroundTasks, Depends, Request
 from supabase import Client
 
 from app.core.config import Settings
+from app.core import observability
+from app.core.metrics import METRICS
 from app.core.exceptions import RateLimited, ServiceUnavailable, Unauthorized
 from app.core.security import DEVICE_TOKEN_RE, LLM_TOKEN_RE, client_ip
 from app.integrations.supabase import create_service_client
@@ -93,6 +95,7 @@ async def authenticate_device(
     async def fail(reason: str) -> Unauthorized:
         over = await limiter.is_over(ip)
         await limiter.record(ip)
+        METRICS.auth_failures.inc(kind, reason)
         logger.warning("Device auth failed (%s) on %s from %s", reason, _route_path(request), ip)
         if over is not None:
             raise RateLimited(over)
@@ -111,6 +114,7 @@ async def authenticate_device(
         now = services.clock.utc_now()
         if device.last_seen_at is None or now - device.last_seen_at >= LAST_SEEN_INTERVAL:
             background.add_task(_touch_last_seen, services, device.id)
+        observability.bind(device_id=device.id, user_id=device.user_id)
         return DeviceContext(
             device_id=device.id,
             user_id=device.user_id,
@@ -155,6 +159,7 @@ async def _verify_user(request: Request, services: Services) -> UserContext:
     if token is None:
         raise Unauthorized()
     user_id = await services.auth.verify_user_jwt(token)
+    observability.bind(user_id=user_id)
     return UserContext(user_id=user_id, jwt=token)
 
 

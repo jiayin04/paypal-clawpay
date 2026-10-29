@@ -21,6 +21,7 @@ from pydantic import ValidationError
 
 from app.core.clock import Clock
 from app.core.config import Settings
+from app.core.metrics import METRICS
 from app.integrations.a2a.client import A2AError, send_message
 from app.merchant_agents.app import create_merchant_app
 from app.repositories.ports.events import A2AMessageRepository
@@ -213,6 +214,9 @@ class MerchantService:
                 result = await send_message(client, url, correlation_id, data, timeout)
         except A2AError as exc:
             latency = int((self._clock.monotonic() - started) * 1000)
+            METRICS.merchant_requests.inc(code, method, exc.outcome)
+            METRICS.merchant_duration.observe(latency / 1000, code, method)
+            logger.warning("Merchant %s %s failed: %s/%s", code, method, exc.outcome, exc.reason)
             self._log(
                 log,
                 code=code,
@@ -225,7 +229,10 @@ class MerchantService:
                 payload={},
             )
             raise
-        return result, int((self._clock.monotonic() - started) * 1000)
+        latency = int((self._clock.monotonic() - started) * 1000)
+        METRICS.merchant_requests.inc(code, method, "ok")
+        METRICS.merchant_duration.observe(latency / 1000, code, method)
+        return result, latency
 
     def _log_response(
         self,
