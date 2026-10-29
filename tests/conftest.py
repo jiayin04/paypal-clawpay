@@ -20,6 +20,7 @@ _ENV_PREFIXES = (
     "DEVICE_OWNER_",
     "CLAWPAY_",
     "METRICS_",
+    "CHANNEL3_",
 )
 _ENV_NAMES = {
     "APP_ENV",

@@ -15,6 +15,7 @@
 --   20261025090100_phase2_devices_orders_a2a.sql  sha256-lf=5382def57feac02eff21ce8f6f347ef045dc3453b4bd431ed02726700ff11333
 --   20261025090200_phase3_approvals_payments.sql  sha256-lf=2505f5bcc58e093c10951ae91fd50e95e47775252ece215ab1056af743dd92ac
 --   20261025090300_phase4_realtime.sql  sha256-lf=5886d077e86f2dc4208fa14c1241bfd539c7cc79e518a697ff5ea2a50f8d01de
+--   20261030090000_channel3_merchant.sql  sha256-lf=b4b2c71b6378b9b59451fac52f21e882d66569830e79599d7dc077edde69c7c8
 
 begin;
 set local lock_timeout = '10s';
@@ -3242,6 +3243,17 @@ begin
   end if;
 end $$;
 -- === END MIGRATION 20261025090300_phase4_realtime.sql ===
+
+
+-- === BEGIN MIGRATION 20261030090000_channel3_merchant.sql ===
+-- ClawPay: Channel3 marketplace merchant (real product catalog via the Channel3 API).
+--
+-- Data only: no tables, functions or grants change. The merchant row is needed
+-- because orders reference merchants by id; whether ClawPay actually calls the
+-- Channel3 agent is decided by CHANNEL3_API_KEY / CHANNEL3_AGENT_ENDPOINT.
+
+-- Merchant data is intentionally applied separately by seed.sql.
+-- === END MIGRATION 20261030090000_channel3_merchant.sql ===
 
 -- Make backend access explicit even if the public schema/default ACLs were
 -- recreated. BYPASSRLS alone does not grant table privileges.

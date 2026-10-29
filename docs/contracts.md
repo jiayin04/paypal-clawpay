@@ -128,7 +128,7 @@ Description: "Search merchant catalogs. Show the user names and prices. Use sku 
 {"results":[{"sku":"GRC-MILK-1L","name":"Fresh milk 1L","merchant_id":"grocer","price_minor":690,"price":"RM6.90","currency":"MYR"},{"sku":"GRC-BREAD-WW","name":"Wholemeal bread","merchant_id":"grocer","price_minor":450,"price":"RM4.50","currency":"MYR"}]}
 ```
 
-Both merchants are queried in parallel unless `merchant_id` is given; if one fails, the other's results are returned. Results are sorted by (merchant_id, name). No matches → `{"results":[],"message":"No matching products."}` (not an error). Products in a currency other than `DEFAULT_CURRENCY` are dropped.
+`channel3` is added to both `merchant_id` enums (search and `create_order`) only when `CHANNEL3_API_KEY` or `CHANNEL3_AGENT_ENDPOINT` is set; otherwise the schemas are exactly as shown and `channel3` → `invalid_arguments`. All enabled merchants are queried in parallel unless `merchant_id` is given; if one fails, the other's results are returned. Results are sorted by (merchant_id, name). No matches → `{"results":[],"message":"No matching products."}` (not an error). Products in a currency other than `DEFAULT_CURRENCY` are dropped.
 
 Errors: `merchant_unavailable` (all queried merchants failed), `invalid_arguments`.
 

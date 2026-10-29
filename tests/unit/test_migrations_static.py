@@ -41,6 +41,13 @@ def test_every_new_function_is_locked_down(path: Path) -> None:
         assert not functions and not _TABLE_RE.findall(sql)
         assert "pg_publication_tables" in sql and "and not exists" in sql
         return
+    if path.name.endswith("channel3_merchant.sql"):
+        # Data-only: one idempotent merchant row, no DDL or privilege changes.
+        assert not functions and not _TABLE_RE.findall(sql)
+        assert not re.search(r"(?im)^\s*(?:alter|grant|revoke|drop|create|update|delete)\s", sql)
+        assert "('channel3', 'Channel3 Marketplace', 'active')" in sql
+        assert "on conflict (merchant_code) do nothing;" in sql
+        return
     assert functions, "expected at least one function"
     for name in functions:
         body = re.search(

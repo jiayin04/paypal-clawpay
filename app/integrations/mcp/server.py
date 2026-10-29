@@ -60,7 +60,7 @@ class McpServer:
         if method == "ping":
             return 200, jsonrpc.dumps(jsonrpc.result(rpc_id, {}))
         if method == "tools/list":
-            return 200, jsonrpc.dumps(jsonrpc.result(rpc_id, {"tools": mcp_tools.TOOLS}))
+            return 200, jsonrpc.dumps(jsonrpc.result(rpc_id, {"tools": mcp_tools.tools_for(self._services.settings.merchant_codes)}))
         if method == "tools/call":
             return 200, await self._tools_call(rpc_id, params, device, background)
         return 200, jsonrpc.dumps(jsonrpc.error(rpc_id, jsonrpc.METHOD_NOT_FOUND, "Method not found"))
@@ -106,6 +106,11 @@ class McpServer:
             message = mcp_tools.validation_message(exc)
             self._record(background, device, name, arguments, None, "invalid_arguments", started)
             return envelope(mcp_tools.error_result("invalid_arguments", message))
+
+        merchant = getattr(args, "merchant_id", None)
+        if merchant is not None and merchant not in services.settings.merchant_codes:
+            self._record(background, device, name, arguments, None, "invalid_arguments", started)
+            return envelope(mcp_tools.error_result("invalid_arguments", "merchant_id: unknown merchant"))
 
         call_args = args.model_dump(exclude_none=True)
         try:

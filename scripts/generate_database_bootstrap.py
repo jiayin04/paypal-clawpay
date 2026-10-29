@@ -25,6 +25,24 @@ MERCHANT_SEED = re.compile(
 )
 
 
+SEED_ROW = re.compile(r"(?m)^  (\('[a-z0-9_-]+', '[^'\n]+', '(?:active|inactive)'\)),?$")
+
+
+def _merge_merchant_seeds(seeds: list[str]) -> str:
+    """One idempotent insert with every merchant row, in migration order."""
+    rows: list[str] = []
+    for seed in seeds:
+        found = SEED_ROW.findall(seed)
+        if not found:
+            raise ValueError("Merchant seed without parseable rows needs a reviewed bootstrap update")
+        rows.extend(found)
+    codes = [row.split("'")[1] for row in rows]
+    if len(codes) != len(set(codes)):
+        raise ValueError("Duplicate merchant codes in migration seeds")
+    return ("insert into public.merchants (merchant_code, display_name, status) values\n  "
+            + ",\n  ".join(rows) + "\non conflict (merchant_code) do nothing;")
+
+
 def read_sources() -> list[tuple[Path, str]]:
     return [(path, path.read_text(encoding="utf-8")) for path in sorted(MIGRATIONS.glob("*.sql"))]
 
@@ -42,8 +60,9 @@ def render_files() -> dict[str, str]:
         for name, types in FUNCTION_ACL.findall(source):
             signatures[name, ", ".join(part.strip() for part in types.split(",") if part.strip())] = None
         merchant_seeds.extend(MERCHANT_SEED.findall(source))
-    if len(merchant_seeds) != 1:
-        raise ValueError("Expected exactly one canonical merchant seed")
+    if not merchant_seeds:
+        raise ValueError("Expected at least one canonical merchant seed")
+    merchant_seed = _merge_merchant_seeds(merchant_seeds)
 
     table_names = ", ".join(f"'{name}'" for name in tables)
     table_targets = ",\n  ".join(f"public.{name}" for name in tables)
@@ -196,8 +215,8 @@ select u.id, u.raw_user_meta_data ->> 'display_name'
 from auth.users u
 on conflict (id) do nothing;
 
--- These codes must match the deterministic A2A merchant agents.
-{merchant_seeds[0]}
+-- These codes must match the A2A merchant agents (mock catalogs and Channel3).
+{merchant_seed}
 
 commit;
 

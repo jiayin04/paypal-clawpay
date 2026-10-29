@@ -36,6 +36,7 @@ from tests.fakes.repositories.webhooks import FakeWebhookRepository
 
 GROCER_ID = "aaaaaaaa-0000-0000-0000-0000000000a1"
 ELECTRONICS_ID = "aaaaaaaa-0000-0000-0000-0000000000e1"
+CHANNEL3_ID = "aaaaaaaa-0000-0000-0000-0000000000c3"
 
 
 class InMemoryStore:
@@ -53,6 +54,13 @@ class InMemoryStore:
                 "id": ELECTRONICS_ID,
                 "merchant_code": "electronics",
                 "display_name": "Electronics Demo",
+                "status": "active",
+            },
+            # Seeded by migration 20261030090000_channel3_merchant.sql.
+            CHANNEL3_ID: {
+                "id": CHANNEL3_ID,
+                "merchant_code": "channel3",
+                "display_name": "Channel3 Marketplace",
                 "status": "active",
             },
         }

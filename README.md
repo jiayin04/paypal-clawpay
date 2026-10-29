@@ -82,7 +82,8 @@ JWT dashboard reads require `SUPABASE_PUBLISHABLE_KEY`; unset → `503 dashboard
 ClawPay can delegate every PayPal call to a separate A2A service, `app/paypal_agent`. ClawPay still owns the decision to pay: the device signature, spending policy and reservation, the per-order `PayPal-Request-Id`, and classification of results. The agent only executes the call it is given with that request id and reports PayPal's answer. It holds the PayPal Sandbox credentials, requires `PAYPAL_AGENT_TOKEN`, is never mounted on the main app and is not reachable by the device LLM.
 
 ```text
-device LLM --MCP--> ClawPay --A2A--> Grocer / Electronics merchant agents
+device LLM --MCP--> ClawPay --A2A--> Grocer / Electronics mock merchant agents
+                       |     --A2A--> Channel3 merchant agent --REST--> Channel3 product API
                        |
                        +--A2A (bearer)--> PayPal agent --REST--> PayPal Sandbox
 ```
@@ -95,6 +96,16 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --no-access
 ```
 
 with ClawPay's env containing `PAYPAL_AGENT_ENDPOINT=http://127.0.0.1:8201/a2a` and the same `PAYPAL_AGENT_TOKEN`. In that mode ClawPay needs no PayPal credentials. Only PayPal's own error responses (status, name, issue, debug_id) cross back as API errors; an unreachable, unauthorised or misbehaving agent is treated like a PayPal network failure (attempt stays unsent or `requires_reconciliation`), so an agent fault can never release a reservation or produce a second charge. The agent is trusted with the credentials: bind it to 127.0.0.1 or a private network. Agent calls appear in `/metrics` as `clawpay_paypal_requests_total{operation="agent:<op>"}` and carry the caller's `X-Request-ID`, so ClawPay and agent logs join on `request_id`.
+
+## Channel3 merchant agent
+
+Set `CHANNEL3_API_KEY` to add a third merchant, `channel3`, backed by the real Channel3 catalog (`app/merchant_agents/channel3.py`). It speaks the same A2A search/quote protocol as the mock merchants, so ClawPay applies the same untrusted-quote checks and recomputes totals. Search maps to `POST /v1/search` (`config.country` = `CHANNEL3_COUNTRY`, `config.currency` = `DEFAULT_CURRENCY`); a quote re-reads every line with `GET /v1/products/{id}` at live prices. Each product is priced from its cheapest in-stock offer in `DEFAULT_CURRENCY`, and its name shows the retailer domain. Skus are `C3-` + base32 of the Channel3 product id.
+
+- `merchant_id` `channel3` appears in the MCP tool schemas only when Channel3 is enabled; otherwise the schemas are exactly as in the contract and `channel3` is rejected as `invalid_arguments`.
+- By default the agent runs in-process (no public route). A standalone agent (`uv run uvicorn --factory app.merchant_agents.channel3:channel3_app --host 127.0.0.1 --port 8103`) has no authentication and spends Channel3 credits on every call: bind it to 127.0.0.1 and set `CHANNEL3_AGENT_ENDPOINT`.
+- The `channel3` merchant row comes from migration `20261030090000_channel3_merchant.sql` (also in `supabase/seed.sql`).
+- Most Channel3 offers are in USD: set `DEFAULT_CURRENCY=USD` (and `CHANNEL3_COUNTRY=US`) or the agent finds no priced offers. The phone threshold and daily cap apply unchanged, in minor units of `DEFAULT_CURRENCY`.
+- Payment goes to the ClawPay PayPal Sandbox merchant; the retailer order is not placed (demo marketplace).
 
 ## Observability
 
@@ -150,6 +161,11 @@ See `.env.example` for defaults and explanations. Money uses integer minor units
 | `PAYPAL_AGENT_TOKEN` | `` | Shared bearer between ClawPay and the PayPal agent, ≥ 32 chars. Required when the endpoint is set and by the agent itself. |
 | `GROCER_AGENT_ENDPOINT` | `` | standalone: uv run uvicorn --factory app.merchant_agents.app:grocer_app --host 127.0.0.1 --port 8101 then GROCER_AGENT_ENDPOINT=http://127.0.0.1:8101/a2a. Only https:// or http://127.0.0.1 / http://localhost are accepted. |
 | `ELECTRONICS_AGENT_ENDPOINT` | `` |  |
+| `CHANNEL3_API_KEY` | `` | Enables merchant `channel3` (real catalog via Channel3; in-process agent). Each search/quote spends Channel3 credits. |
+| `CHANNEL3_AGENT_ENDPOINT` | `` | Optional standalone Channel3 agent URL instead of in-process. |
+| `CHANNEL3_BASE_URL` | `https://api.trychannel3.com` | Channel3 API base. |
+| `CHANNEL3_COUNTRY` | `US` | ISO country for offers. Prices are taken in `DEFAULT_CURRENCY` (usually set `USD`). |
+| `CHANNEL3_TIMEOUT_SECONDS` | `4.5` | Per Channel3 HTTP call (search is capped at 5 s overall). |
 | `MERCHANT_AGENT_TIMEOUT_SECONDS` | `8` |  |
 | `INTERNAL_SERVICE_TOKEN` | `` | Admin token: device registration and admin revoke. At least 32 characters. Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))" |
 | `PUBLIC_BASE_URL` | `` | ESP-Claw device integration. PUBLIC_BASE_URL: public HTTPS origin with a CA-signed cert (tunnel or host), e.g. https://xxxx.trycloudflare.com. |
@@ -185,5 +201,6 @@ See `.env.example` for defaults and explanations. Money uses integer minor units
 - Rate limits, LLM budgets and reconciliation throttle reset on process restart and are per worker. Budget checks account for completed requests; concurrent requests can briefly exceed a budget.
 - Exhausted payment attempts keep reservations until a verified webhook or manual provider-side resolution; no manual-resolution API exists.
 - Firmware bearer patch and private `cap_clawpay` signing task, actual hardware/tunnel tests, and the dashboard frontend remain separate work. No external AP2 SDK is claimed: the stored gadget-cart mandate binds the verified cart signature.
-- Phone approval, voice, AgentCore, AG Grid, Bryntum, Render and Channel3 are out of scope. Hosting is plain uvicorn.
+- Phone approval, voice, AgentCore, AG Grid, Bryntum and Render are out of scope. Hosting is plain uvicorn.
+- Channel3 orders are charged to the ClawPay PayPal Sandbox merchant; ClawPay does not place the order with the offer's retailer (no fulfilment). Live Channel3 behaviour (MYR offers, response shape) is unverified; tests mock the API.
 - New SQL and pgTAP were reviewed/static-tested, not run against a database in this task.

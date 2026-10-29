@@ -29,6 +29,8 @@ _UPSTREAM_URL_FIELDS = {
     "electronics_agent_endpoint": "ELECTRONICS_AGENT_ENDPOINT",
     "llm_proxy_upstream_base_url": "LLM_PROXY_UPSTREAM_BASE_URL",
     "paypal_agent_endpoint": "PAYPAL_AGENT_ENDPOINT",
+    "channel3_agent_endpoint": "CHANNEL3_AGENT_ENDPOINT",
+    "channel3_base_url": "CHANNEL3_BASE_URL",
 }
 
 # Optional fields where an empty env value (e.g. "SUPABASE_URL=") means "unset".
@@ -53,6 +55,8 @@ _OPTIONAL_FIELDS = (
     "internal_service_token",
     "metrics_token",
     "paypal_agent_token",
+    "channel3_api_key",
+    "channel3_agent_endpoint",
 )
 
 
@@ -106,6 +110,13 @@ class Settings(BaseSettings):
     paypal_agent_token: SecretStr | None = None  # shared bearer between ClawPay and the PayPal agent
     grocer_agent_endpoint: str | None = None
     electronics_agent_endpoint: str | None = None
+    # Channel3 merchant (real catalog). Enabled when the API key (in-process agent)
+    # or a standalone agent endpoint is set.
+    channel3_api_key: SecretStr | None = None
+    channel3_agent_endpoint: str | None = None
+    channel3_base_url: str = "https://api.trychannel3.com"
+    channel3_country: str = Field("US", pattern=r"^[A-Z]{2}$")
+    channel3_timeout_seconds: float = Field(4.5, ge=0.5, le=15)
     internal_service_token: SecretStr | None = None
 
     # ESP-Claw device integration
@@ -303,6 +314,15 @@ class Settings(BaseSettings):
     @property
     def supabase_jwt_issuer(self) -> str | None:
         return f"{self.supabase_url}/auth/v1" if self.supabase_url else None
+
+    @property
+    def channel3_enabled(self) -> bool:
+        return self.channel3_api_key is not None or bool(self.channel3_agent_endpoint)
+
+    @property
+    def merchant_codes(self) -> tuple[str, ...]:
+        """Merchant agents ClawPay may call, in tool-schema order."""
+        return ("grocer", "electronics", "channel3") if self.channel3_enabled else ("grocer", "electronics")
 
     @property
     def paypal_agent_enabled(self) -> bool:

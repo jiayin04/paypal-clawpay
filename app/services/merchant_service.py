@@ -23,6 +23,7 @@ from app.core.clock import Clock
 from app.core.config import Settings
 from app.core.metrics import METRICS
 from app.integrations.a2a.client import A2AError, send_message
+from app.merchant_agents import channel3
 from app.merchant_agents.app import create_merchant_app
 from app.repositories.ports.events import A2AMessageRepository
 from app.schemas.merchant import (
@@ -36,7 +37,6 @@ from app.services.audit_service import AuditService
 
 logger = logging.getLogger(__name__)
 
-MERCHANT_CODES = ("grocer", "electronics")
 IN_PROCESS_URL = "http://merchant.internal/a2a"
 SEARCH_TIMEOUT_CAP = 5.0
 MIN_QUOTE_LIFETIME = timedelta(seconds=30)
@@ -126,6 +126,7 @@ class MerchantService:
         return {
             "grocer": self._settings.grocer_agent_endpoint,
             "electronics": self._settings.electronics_agent_endpoint,
+            channel3.MERCHANT_CODE: self._settings.channel3_agent_endpoint,
         }.get(code)
 
     def _client(self, code: str) -> tuple[httpx.AsyncClient, str]:
@@ -136,7 +137,10 @@ class MerchantService:
             return httpx.AsyncClient(follow_redirects=False), endpoint
         app = self._apps.get(code)
         if app is None:
-            app = create_merchant_app(code, clock=self._clock)
+            if code == channel3.MERCHANT_CODE:
+                app = channel3.create_channel3_app(self._settings, clock=self._clock)
+            else:
+                app = create_merchant_app(code, clock=self._clock)
             self._apps[code] = app
         return httpx.AsyncClient(transport=httpx.ASGITransport(app=app)), IN_PROCESS_URL
 
@@ -322,7 +326,7 @@ class MerchantService:
     async def search(
         self, query: str, max_results: int, merchant_id: str | None, log: A2ALog | None = None
     ) -> list[ValidatedProduct]:
-        codes = [merchant_id] if merchant_id else list(MERCHANT_CODES)
+        codes = [merchant_id] if merchant_id else list(self._settings.merchant_codes)
         results = await asyncio.gather(
             *(self._search_one(code, query, max_results, log) for code in codes),
             return_exceptions=True,

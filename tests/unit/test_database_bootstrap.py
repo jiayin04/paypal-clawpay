@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from app.merchant_agents import channel3
 from app.merchant_agents.catalogs import CATALOGS
 from scripts import generate_database_bootstrap as bootstrap
 
@@ -96,7 +97,7 @@ def test_seed_is_idempotent_reference_data_only_and_restores_auth_profiles():
     assert "on conflict (id) do nothing;" in seed
     assert "on conflict (merchant_code) do nothing;" in seed
     codes = set(re.findall(r"^  \('([^']+)',", seed, re.MULTILINE))
-    assert codes == set(CATALOGS)
+    assert codes == set(CATALOGS) | {channel3.MERCHANT_CODE}
     assert not re.search(r"(?im)^(?:update|delete|truncate|drop)\s", seed)
     schema = (ROOT / "supabase/schema.sql").read_text(encoding="utf-8")
     assert not re.search(r"(?m)^insert into public.merchants", schema)

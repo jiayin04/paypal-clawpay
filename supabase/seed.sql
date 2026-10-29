@@ -27,10 +27,11 @@ select u.id, u.raw_user_meta_data ->> 'display_name'
 from auth.users u
 on conflict (id) do nothing;
 
--- These codes must match the deterministic A2A merchant agents.
+-- These codes must match the A2A merchant agents (mock catalogs and Channel3).
 insert into public.merchants (merchant_code, display_name, status) values
   ('grocer', 'Grocer Demo', 'active'),
-  ('electronics', 'Electronics Demo', 'active')
+  ('electronics', 'Electronics Demo', 'active'),
+  ('channel3', 'Channel3 Marketplace', 'active')
 on conflict (merchant_code) do nothing;
 
 commit;

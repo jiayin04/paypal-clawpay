@@ -13,7 +13,8 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from app.schemas.devices import UuidStr
 
 
-MerchantCode = Literal["grocer", "electronics"]
+# Which of these are callable depends on settings.merchant_codes (channel3 is opt-in).
+MerchantCode = Literal["grocer", "electronics", "channel3"]
 
 
 class _ToolArgs(BaseModel):

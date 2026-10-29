@@ -98,6 +98,16 @@ TOOLS: list[dict[str, Any]] = [
 
 TOOL_NAMES = frozenset(t["name"] for t in TOOLS)
 
+
+def tools_for(merchant_codes: tuple[str, ...]) -> list[dict[str, Any]]:
+    """TOOLS with the merchant_id enum set to the enabled merchants (default: as contracts.md §4)."""
+    tools = json.loads(json.dumps(TOOLS))
+    for tool in tools:
+        prop = tool["inputSchema"]["properties"].get("merchant_id")
+        if prop is not None:
+            prop["enum"] = list(merchant_codes)
+    return tools
+
 ARG_MODELS: dict[str, type[BaseModel]] = {
     "search_products": SearchProductsArgs,
     "create_order": CreateOrderArgs,
