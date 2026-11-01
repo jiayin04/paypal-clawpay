@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.routes import (
     approvals,
+    assistant,
     audit,
     conversations,
     devices,
@@ -100,6 +101,7 @@ def create_app(
                     pass
                 logger.info("Background reconciler stopped")
             await services.llm.client.aclose()
+            await services.tts.client.aclose()
 
     is_production = settings.app_env == "production"
     app = FastAPI(
@@ -134,6 +136,7 @@ def create_app(
     app.include_router(audit.router)
     if settings.mcp_enabled:
         app.include_router(mcp.router)
+        app.include_router(assistant.router)
     return app
 
 

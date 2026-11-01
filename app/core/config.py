@@ -57,6 +57,8 @@ _OPTIONAL_FIELDS = (
     "paypal_agent_token",
     "channel3_api_key",
     "channel3_agent_endpoint",
+    "fish_audio_api_key",
+    "fish_audio_voice_id",
 )
 
 
@@ -147,6 +149,13 @@ class Settings(BaseSettings):
     llm_proxy_daily_token_limit: int = Field(200000, ge=0)
     llm_proxy_max_body_bytes: int = Field(262144, ge=1024)
     llm_proxy_timeout_seconds: float = Field(110.0, gt=0)
+
+    # Fish Audio text-to-speech for watch replies (POST /api/v1/assistant/speech); key stays server-side
+    fish_audio_api_key: SecretStr | None = None
+    fish_audio_voice_id: str | None = None  # reference_id of a Fish Audio voice; unset = Fish default voice
+    fish_audio_model: Literal["s1", "s2-pro", "s2.1-pro", "s2.1-pro-free", "drama-3"] = "s2.1-pro"
+    fish_audio_requests_per_minute: int = Field(20, ge=1)
+    fish_audio_timeout_seconds: float = Field(20.0, gt=0, le=60)
 
     # Spending policy (minor units)
     phone_approval_threshold_minor: int = Field(10000, ge=0)

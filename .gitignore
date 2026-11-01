@@ -28,3 +28,8 @@ supabase/.temp/
 Thumbs.db
 
 .claude/
+# Xcode (watch client)
+build/
+DerivedData/
+xcuserdata/
+*.xcuserstate

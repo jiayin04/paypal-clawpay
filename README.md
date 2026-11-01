@@ -65,6 +65,8 @@ RLS scopes reads to the user; explicit column grants hide tokens, provider refer
 | `GET /api/v1/payment-methods`, `DELETE /api/v1/payment-methods/{id}` | JWT; masked email, no vault references |
 | `POST /api/v1/webhooks/paypal` | See unauthenticated table below |
 | `POST /llm/v1/chat/completions` | `cpl_` only; model pinned, bounded tokens and daily usage |
+| `POST /api/v1/assistant/messages` | `cpd_`; mounted with MCP; text in, spoken-style reply out (server-side tool loop for watch/voice) |
+| `POST /api/v1/assistant/speech` | `cpd_`; mounted with MCP; reply text in, Fish Audio MP3 out; 503 when `FISH_AUDIO_API_KEY` is unset |
 
 JWT dashboard reads require `SUPABASE_PUBLISHABLE_KEY`; unset → `503 dashboard_not_configured`. List pagination uses `limit=1..100` (default 20), `before=<created_at ISO timestamp>`. There is no charge/approve/capture/refund/transfer MCP tool.
 
@@ -96,6 +98,16 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --no-access
 ```
 
 with ClawPay's env containing `PAYPAL_AGENT_ENDPOINT=http://127.0.0.1:8201/a2a` and the same `PAYPAL_AGENT_TOKEN`. In that mode ClawPay needs no PayPal credentials. Only PayPal's own error responses (status, name, issue, debug_id) cross back as API errors; an unreachable, unauthorised or misbehaving agent is treated like a PayPal network failure (attempt stays unsent or `requires_reconciliation`), so an agent fault can never release a reservation or produce a second charge. The agent is trusted with the credentials: bind it to 127.0.0.1 or a private network. Agent calls appear in `/metrics` as `clawpay_paypal_requests_total{operation="agent:<op>"}` and carry the caller's `X-Request-ID`, so ClawPay and agent logs join on `request_id`.
+
+## Watch / voice assistant
+
+`POST /api/v1/assistant/messages` runs the agent loop on the server for clients that only have a microphone (Apple Watch, Siri Shortcut, Wear OS). The client transcribes speech itself and sends `{"text": "buy two milk", "reset": false}` with the claw's `cpd_` token. The server calls the pinned LLM through the proxy service (same per-device rate limit and daily token budget) and executes the same four MCP tools in-process, so validation and conversation events are unchanged. The response is `{"reply", "order", "approval_required"}`; the client speaks `reply`.
+
+- It cannot pay. A created order belongs to the token's device and waits for that device's signature: with the claw's token, the claw's button hold (its approval task must long-poll `GET /api/v1/devices/{id}/pending-approvals` to see orders that did not come from its own LLM); with a watch registered as its own device (`scripts/register_watch.py`), the watch's Secure Enclave key. Send `"approver": "watch"` so the reply says to approve on the watch.
+- History is kept per device in memory for 15 minutes (last 24 messages); `reset: true` clears it. One worker, like the other limits.
+- Each message makes up to 5 LLM calls; LLM proxy settings must be configured or it returns `503 proxy_not_configured`.
+- `POST /api/v1/assistant/speech` turns reply text (≤500 chars) into MP3 with [Fish Audio](https://docs.fish.audio) (`POST https://api.fish.audio/v1/tts`). Set `FISH_AUDIO_API_KEY`, optionally `FISH_AUDIO_VOICE_ID` (a voice's `reference_id`) and `FISH_AUDIO_MODEL` (default `s2.1-pro`; `s2.1-pro-free` on the free tier). The key stays on the server, text is never logged, and requests are limited per device (`FISH_AUDIO_REQUESTS_PER_MINUTE`). Any Fish Audio failure is `502 tts_unavailable`; the watch then speaks with its built-in voice.
+- A watchOS client is in [watch/](watch/README.md).
 
 ## Channel3 merchant agent
 
