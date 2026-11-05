@@ -57,6 +57,7 @@ class ApprovalService:
         payment_service: Any = None,
         payment_repo: Any = None,
         audit: Any = None,
+        fulfillment: Any = None,  # FulfillmentService; None = no merchant handoff
     ) -> None:
         self._settings = settings
         self._clock = clock
@@ -65,6 +66,7 @@ class ApprovalService:
         self._orders = orders
         self._payment_service = payment_service
         self._payment_repo = payment_repo
+        self._fulfillment = fulfillment
 
     # ------------------------------------------------------------------
     # §3.2: GET /api/v1/orders/{order_id}/approval-challenge
@@ -272,29 +274,38 @@ class ApprovalService:
         if not result.ok:
             return self._map_rpc_error(result.reason)
 
-        # Inline payment execution inside budget (§3.8)
+        # Inline: merchant reservation, then payment inside the PayPal budget (§3.8),
+        # then merchant confirm/release. Any surprise leaves payment_pending; the
+        # reconciler's send guard still refuses to charge an unreserved order.
         attempt_id = result.data.get("attempt_id") if result.data else None
         if self._payment_service is not None and self._payment_repo is not None and attempt_id:
             try:
                 attempt = await self._payment_repo.get_attempt(str(attempt_id))
                 if attempt is not None:
-                    budget = float(self._settings.paypal_inline_budget_seconds)
-                    with anyio.fail_after(budget):
-                        classification = await self._payment_service.execute(attempt)
-                        if classification.status == "completed":
-                            return {
-                                "order_id": order_id,
-                                "approval": "verified",
-                                "status": "paid",
-                                "message": "Payment completed.",
-                            }
-                        if classification.status == "failed":
+                    if self._fulfillment is not None:
+                        reserved = await self._fulfillment.reserve(order_id, device.user_id)
+                        if not reserved.ok:
+                            await self._payment_service.fail_unsent(attempt, reserved.failure_code or "")
                             return {
                                 "order_id": order_id,
                                 "approval": "verified",
                                 "status": "payment_failed",
-                                "message": "Payment failed.",
+                                "message": reserved.message,
+                                "fulfillment_status": "reservation_failed",
                             }
+                    budget = float(self._settings.paypal_inline_budget_seconds)
+                    with anyio.fail_after(budget):
+                        classification = await self._payment_service.execute(attempt)
+                    if classification.status in ("completed", "failed"):
+                        fulfillment = await self._after_payment(order_id, device.user_id, classification.status)
+                        paid = classification.status == "completed"
+                        return {
+                            "order_id": order_id,
+                            "approval": "verified",
+                            "status": "paid" if paid else "payment_failed",
+                            "message": "Payment completed." if paid else "Payment failed.",
+                            "fulfillment_status": fulfillment,
+                        }
             except TimeoutError:
                 logger.info("Inline payment execution timed out; returning payment_pending")
             except Exception as exc:
@@ -306,6 +317,17 @@ class ApprovalService:
             "status": "payment_pending",
             "message": "Approved. Payment is processing.",
         }
+
+    async def _after_payment(self, order_id: str, user_id: str, payment_status: str) -> str | None:
+        """Merchant confirm/release; never changes the payment answer."""
+        if self._fulfillment is None:
+            return None
+        try:
+            view = await self._fulfillment.after_payment(order_id, user_id, payment_status)
+        except Exception as exc:
+            logger.warning("Merchant fulfillment follow-up failed: %s", type(exc).__name__)
+            return None
+        return view.status if view else None
 
     async def _audit_approval(self, device: DeviceContext, event: str, order_id: str) -> None:
         """Best-effort local audit log; the RPC logs its own audit inside the DB."""

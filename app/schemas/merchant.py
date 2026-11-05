@@ -68,5 +68,55 @@ class QuoteResponse(_Strict):
 class MerchantErrorResponse(_Strict):
     type: Literal["clawpay.error.v1"]
     correlation_id: str
-    code: Literal["unknown_sku", "currency_not_supported", "bad_request"]
+    code: Literal[
+        "unknown_sku",
+        "currency_not_supported",
+        "bad_request",
+        # fulfillment (reserve / confirm / cancel)
+        "out_of_stock",
+        "price_changed",
+        "unknown_reservation",
+        "reservation_expired",
+        "already_confirmed",
+    ]
     sku: str | None = Field(None, max_length=64)
+
+
+# -- fulfillment: reserve before payment, confirm or cancel after ------------------------
+
+Ref = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{1,64}$")]
+
+
+class ReserveLine(_Strict):
+    sku: Sku
+    qty: Annotated[int, Field(ge=1, le=1000)]
+
+
+class ReserveResponse(_Strict):
+    type: Literal["clawpay.reserve_response.v1"]
+    correlation_id: str
+    merchant_id: str
+    order_ref: str
+    reservation_id: Ref
+    currency: Currency
+    items: list[ReserveLine] = Field(min_length=1, max_length=50)
+    total_minor: int
+    expires_at: str = Field(max_length=64)
+
+
+class ConfirmResponse(_Strict):
+    type: Literal["clawpay.confirm_response.v1"]
+    correlation_id: str
+    merchant_id: str
+    order_ref: str
+    reservation_id: Ref
+    fulfillment_id: Ref
+    status: Literal["accepted"]
+
+
+class CancelResponse(_Strict):
+    type: Literal["clawpay.cancel_response.v1"]
+    correlation_id: str
+    merchant_id: str
+    order_ref: str
+    status: Literal["released"]

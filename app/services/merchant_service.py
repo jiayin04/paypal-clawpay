@@ -23,12 +23,14 @@ from app.core.clock import Clock
 from app.core.config import Settings
 from app.core.metrics import METRICS
 from app.integrations.a2a.client import A2AError, send_message
-from app.merchant_agents import channel3
-from app.merchant_agents.app import create_merchant_app
+from app.merchant_agents import registry
 from app.repositories.ports.events import A2AMessageRepository
 from app.schemas.merchant import (
+    CancelResponse,
+    ConfirmResponse,
     MerchantErrorResponse,
     QuoteResponse,
+    ReserveResponse,
     SearchProduct,
     SearchResponse,
 )
@@ -42,6 +44,20 @@ SEARCH_TIMEOUT_CAP = 5.0
 MIN_QUOTE_LIFETIME = timedelta(seconds=30)
 MAX_QUOTE_LIFETIME = timedelta(minutes=30)
 MAX_PAYLOAD_BYTES = 16 * 1024
+MIN_RESERVATION_LIFETIME = timedelta(seconds=30)
+MAX_RESERVATION_LIFETIME = timedelta(hours=24)
+# Methods whose a2a_messages rows are linked to the order.
+ORDER_METHODS = frozenset({"quote", "reserve", "confirm", "cancel"})
+# Merchant error code -> MerchantFailure code for the fulfillment calls.
+FULFILLMENT_ERRORS = {
+    "out_of_stock": "out_of_stock",
+    "price_changed": "price_changed",
+    "unknown_sku": "unknown_sku",
+    "currency_not_supported": "currency_not_supported",
+    "unknown_reservation": "reservation_lost",
+    "reservation_expired": "reservation_lost",
+    "already_confirmed": "already_confirmed",
+}
 
 
 class MerchantFailure(Exception):
@@ -80,6 +96,20 @@ class ValidatedQuote:
     lines: tuple[QuoteLineOut, ...]
     total_minor: int
     expires_at: datetime  # stored value: min(merchant expiry, now + QUOTE_TTL_SECONDS)
+
+
+@dataclass(frozen=True)
+class ValidatedReservation:
+    merchant_code: str
+    reservation_id: str
+    expires_at: datetime
+
+
+@dataclass(frozen=True)
+class ValidatedFulfillment:
+    merchant_code: str
+    reservation_id: str
+    fulfillment_id: str
 
 
 @dataclass
@@ -122,25 +152,16 @@ class MerchantService:
 
     # -- transport -----------------------------------------------------------------
 
-    def _endpoint(self, code: str) -> str | None:
-        return {
-            "grocer": self._settings.grocer_agent_endpoint,
-            "electronics": self._settings.electronics_agent_endpoint,
-            channel3.MERCHANT_CODE: self._settings.channel3_agent_endpoint,
-        }.get(code)
-
     def _client(self, code: str) -> tuple[httpx.AsyncClient, str]:
         if code in self._transports:
             return httpx.AsyncClient(transport=self._transports[code]), IN_PROCESS_URL
-        endpoint = self._endpoint(code)
+        endpoint = registry.endpoint(self._settings, code)
         if endpoint:
             return httpx.AsyncClient(follow_redirects=False), endpoint
         app = self._apps.get(code)
         if app is None:
-            if code == channel3.MERCHANT_CODE:
-                app = channel3.create_channel3_app(self._settings, clock=self._clock)
-            else:
-                app = create_merchant_app(code, clock=self._clock)
+            # One instance per merchant, so in-process reservations survive between calls.
+            app = registry.build_app(code, self._settings, self._clock)
             self._apps[code] = app
         return httpx.AsyncClient(transport=httpx.ASGITransport(app=app)), IN_PROCESS_URL
 
@@ -179,7 +200,7 @@ class MerchantService:
         """Persist collected rows; failures are WARNING only."""
         for row in log.rows:
             row = dict(row)
-            row["order_id"] = order_id if row["method"] == "quote" else None
+            row["order_id"] = order_id if row["method"] in ORDER_METHODS else None
             try:
                 await self._a2a_repo.insert(row)
             except Exception as exc:
@@ -208,7 +229,7 @@ class MerchantService:
             method=method,
             outcome="ok",
             latency_ms=None,
-            summary={"item_count": len(data.get("items", []))} if method == "quote" else {},
+            summary={"item_count": len(data.get("items", []))} if method in ("quote", "reserve") else {},
             payload=data,
         )
         started = self._clock.monotonic()
@@ -465,3 +486,171 @@ class MerchantService:
         stored = min(expires, now + timedelta(seconds=self._settings.quote_ttl_seconds))
         lines.sort(key=lambda line: line.sku)
         return ValidatedQuote(code, quote.quote_id, quote.currency, tuple(lines), subtotal, stored)
+
+    # -- fulfillment: reserve before payment, confirm / cancel after ------------------
+    #
+    # Same discipline as quotes: every answer is untrusted, echoed ids and totals
+    # must match what ClawPay sent, and a bad answer is rejected (never "fixed").
+    # Failure codes: merchant_unavailable (no usable answer), fulfillment_invalid
+    # (answer broke the contract), or a FULFILLMENT_ERRORS value.
+
+    async def _fulfillment_call(
+        self, code: str, method: str, data: dict[str, Any], log: A2ALog | None
+    ) -> tuple[dict[str, Any], int]:
+        timeout = min(self._settings.merchant_fulfillment_timeout_seconds,
+                      self._settings.merchant_agent_timeout_seconds)
+        try:
+            return await self._exchange(code, method, data, timeout, log)
+        except A2AError as exc:
+            if exc.outcome == "rejected":
+                await self._reject(code, exc.reason, log.user_id if log else None)
+                raise MerchantFailure("fulfillment_invalid", exc.reason) from None
+            raise MerchantFailure("merchant_unavailable", exc.reason) from None
+
+    async def _rejected(
+        self, code: str, method: str, correlation_id: str, latency: int, reason: str, log: A2ALog | None
+    ) -> MerchantFailure:
+        self._log_response(log, code, method, correlation_id, "rejected", latency, {"reason": reason}, {})
+        await self._reject(code, reason, log.user_id if log else None)
+        return MerchantFailure("fulfillment_invalid", reason)
+
+    async def _merchant_error(
+        self,
+        code: str,
+        method: str,
+        correlation_id: str,
+        latency: int,
+        result: Mapping[str, Any],
+        skus: Sequence[str],
+        log: A2ALog | None,
+    ) -> MerchantFailure | None:
+        """A validated ``clawpay.error.v1`` mapped to a failure, or None for a normal answer."""
+        if result.get("type") != "clawpay.error.v1":
+            return None
+        try:
+            error = MerchantErrorResponse.model_validate(result)
+            if error.correlation_id != correlation_id:
+                raise ValueError("correlation_id")
+        except (ValidationError, ValueError):
+            return await self._rejected(code, method, correlation_id, latency, "error_schema", log)
+        self._log_response(
+            log, code, method, correlation_id, "ok", latency, {"error_code": error.code}, error.model_dump()
+        )
+        failure_code = FULFILLMENT_ERRORS.get(error.code, "fulfillment_invalid")
+        return MerchantFailure(failure_code, error.code, error.sku if error.sku in skus else None)
+
+    async def reserve(
+        self,
+        code: str,
+        order_ref: str,
+        lines: Sequence[Mapping[str, Any]],
+        currency: str,
+        total_minor: int,
+        log: A2ALog | None = None,
+    ) -> ValidatedReservation:
+        """Ask the merchant agent to hold ``lines`` (sku, qty, unit_price_minor) for the order."""
+        correlation_id = str(uuid.uuid4())
+        items = sorted(
+            ({"sku": str(i["sku"]), "qty": int(i["qty"]), "unit_price_minor": int(i["unit_price_minor"])}
+             for i in lines),
+            key=lambda i: i["sku"],
+        )
+        requested = {i["sku"]: i["qty"] for i in items}
+        data = {
+            "type": "clawpay.reserve_request.v1",
+            "correlation_id": correlation_id,
+            "order_ref": order_ref,
+            "currency": currency,
+            "items": items,
+            "total_minor": total_minor,
+        }
+        result, latency = await self._fulfillment_call(code, "reserve", data, log)
+        failure = await self._merchant_error(code, "reserve", correlation_id, latency, result, list(requested), log)
+        if failure is not None:
+            raise failure
+        try:
+            response = ReserveResponse.model_validate(result)
+        except ValidationError:
+            raise await self._rejected(code, "reserve", correlation_id, latency, "schema", log) from None
+        now = self._clock.utc_now()
+        expires = _parse_expiry(response.expires_at)
+        echoed = [line.sku for line in response.items]
+        if response.merchant_id != code:
+            reason = "merchant_id"
+        elif response.correlation_id != correlation_id:
+            reason = "correlation_id"
+        elif response.order_ref != order_ref:
+            reason = "order_ref"
+        elif response.currency != currency:
+            reason = "currency"
+        elif len(echoed) != len(set(echoed)) or {line.sku: line.qty for line in response.items} != requested:
+            reason = "items"
+        elif response.total_minor != total_minor:
+            reason = "total"
+        elif expires is None or not now + MIN_RESERVATION_LIFETIME < expires <= now + MAX_RESERVATION_LIFETIME:
+            reason = "expires_at"
+        else:
+            reason = None
+        if reason is not None:
+            raise await self._rejected(code, "reserve", correlation_id, latency, reason, log)
+        self._log_response(
+            log, code, "reserve", correlation_id, "ok", latency,
+            {"item_count": len(items), "total_minor": total_minor, "currency": currency},
+            response.model_dump(),
+        )
+        return ValidatedReservation(code, response.reservation_id, expires)  # type: ignore[arg-type]
+
+    async def confirm(
+        self, code: str, order_ref: str, reservation_id: str, log: A2ALog | None = None
+    ) -> ValidatedFulfillment:
+        """Tell the merchant agent the reserved order is paid; returns its fulfillment id."""
+        correlation_id = str(uuid.uuid4())
+        data = {
+            "type": "clawpay.confirm_request.v1",
+            "correlation_id": correlation_id,
+            "order_ref": order_ref,
+            "reservation_id": reservation_id,
+        }
+        result, latency = await self._fulfillment_call(code, "confirm", data, log)
+        failure = await self._merchant_error(code, "confirm", correlation_id, latency, result, (), log)
+        if failure is not None:
+            raise failure
+        try:
+            response = ConfirmResponse.model_validate(result)
+        except ValidationError:
+            raise await self._rejected(code, "confirm", correlation_id, latency, "schema", log) from None
+        for field_name, expected in (("merchant_id", code), ("correlation_id", correlation_id),
+                                     ("order_ref", order_ref), ("reservation_id", reservation_id)):
+            if getattr(response, field_name) != expected:
+                raise await self._rejected(code, "confirm", correlation_id, latency, field_name, log)
+        self._log_response(
+            log, code, "confirm", correlation_id, "ok", latency,
+            {"fulfillment_id": response.fulfillment_id}, response.model_dump(),
+        )
+        return ValidatedFulfillment(code, reservation_id, response.fulfillment_id)
+
+    async def cancel(
+        self, code: str, order_ref: str, reservation_id: str | None, log: A2ALog | None = None
+    ) -> None:
+        """Release the order's reservation. Without an id the merchant releases whatever it holds."""
+        correlation_id = str(uuid.uuid4())
+        data: dict[str, Any] = {
+            "type": "clawpay.cancel_request.v1",
+            "correlation_id": correlation_id,
+            "order_ref": order_ref,
+        }
+        if reservation_id is not None:
+            data["reservation_id"] = reservation_id
+        result, latency = await self._fulfillment_call(code, "cancel", data, log)
+        failure = await self._merchant_error(code, "cancel", correlation_id, latency, result, (), log)
+        if failure is not None:
+            raise failure
+        try:
+            response = CancelResponse.model_validate(result)
+        except ValidationError:
+            raise await self._rejected(code, "cancel", correlation_id, latency, "schema", log) from None
+        for field_name, expected in (("merchant_id", code), ("correlation_id", correlation_id),
+                                     ("order_ref", order_ref)):
+            if getattr(response, field_name) != expected:
+                raise await self._rejected(code, "cancel", correlation_id, latency, field_name, log)
+        self._log_response(log, code, "cancel", correlation_id, "ok", latency, {}, response.model_dump())

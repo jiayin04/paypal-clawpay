@@ -39,3 +39,5 @@ class GadgetApprovalResponse(BaseModel):
     approval: str
     status: str
     message: str | None = None
+    # Merchant handoff (orders.fulfillment_status) when the payment result is known.
+    fulfillment_status: str | None = None

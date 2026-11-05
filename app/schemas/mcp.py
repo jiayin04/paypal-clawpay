@@ -10,11 +10,12 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
+from app.merchant_agents.registry import CODES
 from app.schemas.devices import UuidStr
 
 
-# Which of these are callable depends on settings.merchant_codes (channel3 is opt-in).
-MerchantCode = Literal["grocer", "electronics", "channel3"]
+# Every registered merchant; which are callable depends on settings.merchant_codes.
+MerchantCode = Literal[CODES]  # type: ignore[valid-type]
 
 
 class _ToolArgs(BaseModel):

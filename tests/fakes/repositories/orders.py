@@ -28,6 +28,9 @@ def _order_record(o: Mapping[str, Any]) -> OrderRecord:
         o["created_at"],
         o["updated_at"],
         o.get("cart_sha256"),
+        o.get("fulfillment_status", "none"),
+        o.get("merchant_reservation_id"),
+        o.get("merchant_fulfillment_id"),
     )
 
 
@@ -167,3 +170,34 @@ class FakeOrderRepository:
         ]
         candidates.sort(key=lambda o: o.get("created_at", now))
         return [_order_record(o) for o in candidates]
+
+    async def set_fulfillment(
+        self,
+        *,
+        order_id: str,
+        expected: Sequence[str],
+        status: str,
+        reservation_id: str | None = None,
+        fulfillment_id: str | None = None,
+    ) -> RpcResult:
+        """Mirrors set_order_fulfillment (migration 20261103090000_merchant_fulfillment.sql)."""
+        s = self.s
+        async with s.lock:
+            await s._enter("set_order_fulfillment")
+            order = s.orders.get(order_id)
+            if order is None:
+                return RpcResult(False, "order_not_found", {"fulfillment_status": None})
+            current = order.get("fulfillment_status", "none")
+            if current not in expected:
+                return RpcResult(False, "status_changed", {"fulfillment_status": current})
+            assert status in ("none", "reserved", "reservation_failed", "confirmed", "fulfillment_pending",
+                              "released"), status  # mirrors the column check
+            order["fulfillment_status"] = status
+            if reservation_id is not None:
+                order["merchant_reservation_id"] = reservation_id
+            if fulfillment_id is not None:
+                order["merchant_fulfillment_id"] = fulfillment_id
+            order["updated_at"] = s.now()
+            s._audit(order["user_id"], "system", None, "order.fulfillment_changed", "order", order_id,
+                     {"from": current, "to": status})
+            return RpcResult(True, "updated", {"fulfillment_status": status})

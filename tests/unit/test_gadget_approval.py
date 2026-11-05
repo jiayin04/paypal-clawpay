@@ -608,7 +608,10 @@ def test_concurrent_approvals_single_challenge_race() -> None:
 def test_concurrent_orders_exceeding_cap_race_ac3_3() -> None:
     """Two orders that together exceed daily spending limit: exactly one succeeds."""
     priv_key, pub_pem = _generate_p256()
-    h = make_harness(daily_spending_limit_minor=50000, phone_approval_threshold_minor=50000)
+    # Totals are forced below without changing the items; a merchant agent would
+    # (correctly) refuse to reserve such an order, so the handoff is off here.
+    h = make_harness(daily_spending_limit_minor=50000, phone_approval_threshold_minor=50000,
+                     merchant_fulfillment_enabled=False)
     token, device_id, user_id = h.new_device(public_key=pub_pem)
 
     # Order 1 (30000 minor)

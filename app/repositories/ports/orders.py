@@ -24,6 +24,10 @@ class OrderRecord:
     created_at: datetime
     updated_at: datetime
     cart_sha256: str | None = None
+    # Merchant fulfillment handoff, separate from the payment status machine.
+    fulfillment_status: str = "none"
+    merchant_reservation_id: str | None = None
+    merchant_fulfillment_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -69,3 +73,18 @@ class OrderRepository(Protocol):
         ...
 
     async def list_pending_for_device(self, device_id: str) -> list[OrderRecord]: ...
+
+    async def set_fulfillment(
+        self,
+        *,
+        order_id: str,
+        expected: Sequence[str],
+        status: str,
+        reservation_id: str | None = None,
+        fulfillment_id: str | None = None,
+    ) -> RpcResult:
+        """RPC set_order_fulfillment: compare-and-set on fulfillment_status.
+
+        reasons: updated, order_not_found, status_changed -> data {fulfillment_status}.
+        """
+        ...

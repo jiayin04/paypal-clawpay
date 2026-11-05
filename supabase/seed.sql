@@ -31,7 +31,10 @@ on conflict (id) do nothing;
 insert into public.merchants (merchant_code, display_name, status) values
   ('grocer', 'Grocer Demo', 'active'),
   ('electronics', 'Electronics Demo', 'active'),
-  ('channel3', 'Channel3 Marketplace', 'active')
+  ('channel3', 'Channel3 Marketplace', 'active'),
+  ('shopee', 'Shopee Demo', 'active'),
+  ('foodpanda', 'Foodpanda Demo', 'active'),
+  ('grab', 'Grab Demo', 'active')
 on conflict (merchant_code) do nothing;
 
 commit;

@@ -37,6 +37,9 @@ from tests.fakes.repositories.webhooks import FakeWebhookRepository
 GROCER_ID = "aaaaaaaa-0000-0000-0000-0000000000a1"
 ELECTRONICS_ID = "aaaaaaaa-0000-0000-0000-0000000000e1"
 CHANNEL3_ID = "aaaaaaaa-0000-0000-0000-0000000000c3"
+SHOPEE_ID = "aaaaaaaa-0000-0000-0000-0000000005e1"
+FOODPANDA_ID = "aaaaaaaa-0000-0000-0000-0000000000f1"
+GRAB_ID = "aaaaaaaa-0000-0000-0000-0000000006b1"
 
 
 class InMemoryStore:
@@ -62,6 +65,15 @@ class InMemoryStore:
                 "merchant_code": "channel3",
                 "display_name": "Channel3 Marketplace",
                 "status": "active",
+            },
+            # Seeded by migration 20261103090000_merchant_fulfillment.sql.
+            **{
+                m_id: {"id": m_id, "merchant_code": code, "display_name": name, "status": "active"}
+                for m_id, code, name in (
+                    (SHOPEE_ID, "shopee", "Shopee Demo"),
+                    (FOODPANDA_ID, "foodpanda", "Foodpanda Demo"),
+                    (GRAB_ID, "grab", "Grab Demo"),
+                )
             },
         }
         self.orders: dict[str, dict[str, Any]] = {}

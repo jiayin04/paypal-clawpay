@@ -107,6 +107,31 @@ Set `CHANNEL3_API_KEY` to add a third merchant, `channel3`, backed by the real C
 - Most Channel3 offers are in USD: set `DEFAULT_CURRENCY=USD` (and `CHANNEL3_COUNTRY=US`) or the agent finds no priced offers. The phone threshold and daily cap apply unchanged, in minor units of `DEFAULT_CURRENCY`.
 - Payment goes to the ClawPay PayPal Sandbox merchant; the retailer order is not placed (demo marketplace).
 
+## Merchant agents and reserve-before-pay
+
+Merchant agents are listed in `app/merchant_agents/registry.py` and all speak the same A2A messages: search, quote, reserve, confirm and cancel ([contracts.md section 10](docs/contracts.md#10-merchant-agent-protocol-a2a)). Besides Grocer and Electronics there are mock agents modelled on Shopee (marketplace), Foodpanda (food delivery) and Grab (rides and delivery). They are demo catalogs and do not call the real services. Enable them with:
+
+```env
+ENABLED_MERCHANTS=grocer,electronics,shopee,foodpanda,grab
+```
+
+When an approved order is about to be paid, ClawPay first asks the merchant agent to reserve the cart. If the merchant refuses (sold out, price changed) or does not answer, PayPal is never called and the device is told no money was taken. After capture ClawPay sends confirm and stores the merchant's `fulfillment_id`. `get_order_status` returns it as `merchant_reference`, plus `fulfillment_status`. A failed confirm leaves the order paid and is retried on the next status read. If the payment fails, ClawPay sends cancel to release the hold. To demo a refusal, order `SHP-PLUSH-LTD`, `FPD-DURIAN-CREPE` or `GRB-RIDE-PREMIUM` (sold out). Set `MERCHANT_FULFILLMENT_ENABLED=false` to pay without the handoff.
+
+Run an agent as a separate process (no authentication, so bind it to 127.0.0.1) and point ClawPay at it:
+
+```powershell
+uv run uvicorn --factory app.merchant_agents.app:shopee_app --host 127.0.0.1 --port 8104
+# ClawPay .env: MERCHANT_AGENT_ENDPOINTS=shopee=http://127.0.0.1:8104/a2a
+```
+
+To connect another merchant: add a `MerchantSpec` to the registry and a `public.merchants` row in a new migration (then `python scripts/generate_database_bootstrap.py`). Then add one of these:
+
+- a catalog in `catalogs.py` (mock agent, kind `catalog`);
+- an adapter that maps the merchant's API onto the five messages, like `channel3.py` (kind `api`);
+- for a merchant that runs its own agent speaking this protocol, its URL in `MERCHANT_AGENT_ENDPOINTS` (kind `remote`).
+
+Apply migration `20261103090000_merchant_fulfillment.sql` before deploying this code. It adds the fulfillment columns the order queries read.
+
 ## Observability
 
 - **Request ids.** Every response carries `X-Request-ID` (except `/llm/v1`, whose contract allows only two headers). A caller-supplied `X-Request-ID` matching `^[A-Za-z0-9._-]{8,64}$` is reused, so a tunnel or gateway id flows through; anything else is replaced. The id is forwarded to merchant agents on every A2A call.
@@ -161,6 +186,10 @@ See `.env.example` for defaults and explanations. Money uses integer minor units
 | `PAYPAL_AGENT_TOKEN` | `` | Shared bearer between ClawPay and the PayPal agent, ≥ 32 chars. Required when the endpoint is set and by the agent itself. |
 | `GROCER_AGENT_ENDPOINT` | `` | standalone: uv run uvicorn --factory app.merchant_agents.app:grocer_app --host 127.0.0.1 --port 8101 then GROCER_AGENT_ENDPOINT=http://127.0.0.1:8101/a2a. Only https:// or http://127.0.0.1 / http://localhost are accepted. |
 | `ELECTRONICS_AGENT_ENDPOINT` | `` |  |
+| `ENABLED_MERCHANTS` | `` | Mock catalog merchants to enable, comma separated. Empty = `grocer,electronics`. Others: `shopee`, `foodpanda`, `grab`. |
+| `MERCHANT_AGENT_ENDPOINTS` | `` | Agent URLs as `code=url,code=url`; overrides the `*_AGENT_ENDPOINT` vars. Same URL rules. |
+| `MERCHANT_FULFILLMENT_ENABLED` | `true` | Reserve the cart with the merchant agent before paying; confirm after capture. |
+| `MERCHANT_FULFILLMENT_TIMEOUT_SECONDS` | `3` | Per reserve/confirm/cancel call (capped by `MERCHANT_AGENT_TIMEOUT_SECONDS`). |
 | `CHANNEL3_API_KEY` | `` | Enables merchant `channel3` (real catalog via Channel3; in-process agent). Each search/quote spends Channel3 credits. |
 | `CHANNEL3_AGENT_ENDPOINT` | `` | Optional standalone Channel3 agent URL instead of in-process. |
 | `CHANNEL3_BASE_URL` | `https://api.trychannel3.com` | Channel3 API base. |

@@ -20,8 +20,35 @@ def _iso(clock: FakeClock, seconds: float) -> str:
     return (clock.utc_now() + timedelta(seconds=seconds)).isoformat().replace("+00:00", "Z")
 
 
+def _fulfillment_result(code: str, request_data: dict[str, Any], clock: FakeClock) -> dict[str, Any]:
+    kind, correlation_id = request_data["type"], request_data["correlation_id"]
+    if kind == "clawpay.reserve_request.v1":
+        return {
+            "type": "clawpay.reserve_response.v1", "correlation_id": correlation_id, "merchant_id": code,
+            "order_ref": request_data["order_ref"], "reservation_id": "res_test_1",
+            "currency": request_data["currency"],
+            "items": [{"sku": i["sku"], "qty": i["qty"]} for i in request_data["items"]],
+            "total_minor": request_data["total_minor"], "expires_at": _iso(clock, 900),
+        }
+    if kind == "clawpay.confirm_request.v1":
+        return {
+            "type": "clawpay.confirm_response.v1", "correlation_id": correlation_id, "merchant_id": code,
+            "order_ref": request_data["order_ref"], "reservation_id": request_data["reservation_id"],
+            "fulfillment_id": "ful_test_1", "status": "accepted",
+        }
+    return {
+        "type": "clawpay.cancel_response.v1", "correlation_id": correlation_id, "merchant_id": code,
+        "order_ref": request_data["order_ref"], "status": "released",
+    }
+
+
+FULFILLMENT_TYPES = ("clawpay.reserve_request.v1", "clawpay.confirm_request.v1", "clawpay.cancel_request.v1")
+
+
 def good_result(code: str, request_data: dict[str, Any], clock: FakeClock) -> dict[str, Any]:
     by_sku = {p.sku: p for p in catalogs.products(code)}
+    if request_data["type"] in FULFILLMENT_TYPES:
+        return _fulfillment_result(code, request_data, clock)
     if request_data["type"] == "clawpay.search_request.v1":
         hits = catalogs.search(code, request_data["query"], request_data["max_results"])
         return {

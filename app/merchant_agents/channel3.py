@@ -15,9 +15,15 @@ Mapping:
 - sku = ``C3-`` + base32(Channel3 product id), which fits ClawPay's
   ``^[A-Z0-9-]{1,64}$`` sku rule and decodes back to the case-sensitive id.
 
+- reserve -> ``GET /v1/products/{id}`` per line; refuses with ``price_changed``
+  if the live offer no longer matches the order's unit price, otherwise holds
+  the order in memory (Channel3 has no stock-hold API, so stock is unlimited).
+- confirm / cancel -> in-memory only (see reservations.py).
+
 What this does NOT do: place the order with the retailer. ClawPay charges the
 user's vaulted PayPal wallet to the ClawPay Sandbox merchant; fulfilment at the
-offer's retailer is out of scope (demo marketplace).
+offer's retailer is out of scope (demo marketplace). The confirm answer is the
+agent's acknowledgement, not a retailer order number.
 
 By default ClawPay runs this agent in-process (no public route) when
 CHANNEL3_API_KEY is set. Standalone (no authentication; bind to 127.0.0.1, every
@@ -46,6 +52,7 @@ from app.core.clock import Clock, SystemClock
 from app.core.config import Settings, get_settings
 from app.core.observability import RequestContextMiddleware
 from app.domain.money import EXPONENTS
+from app.merchant_agents import reservations
 
 
 logger = logging.getLogger(__name__)
@@ -212,14 +219,13 @@ def create_channel3_app(
     client = Channel3Client(settings, transport)
     country = settings.channel3_country
     currency = settings.default_currency
+    book = reservations.ReservationBook(clock, {}, "c3_")
     app = FastAPI(title=f"{DISPLAY_NAME} (A2A agent)", docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(RequestContextMiddleware, record_metrics=False)
+    app.state.reservations = book
 
     def _error(correlation_id: Any, code: str, sku: str | None = None) -> dict[str, Any]:
-        data: dict[str, Any] = {"type": "clawpay.error.v1", "correlation_id": correlation_id, "code": code}
-        if sku is not None:
-            data["sku"] = sku
-        return data
+        return reservations.error(correlation_id, code, sku)
 
     async def _search(data: dict[str, Any]) -> dict[str, Any]:
         query, max_results = data.get("query"), data.get("max_results", 5)
@@ -270,6 +276,31 @@ def create_channel3_app(
                 "subtotal_minor": total, "total_minor": total,
                 "expires_at": expires.isoformat().replace("+00:00", "Z")}
 
+    async def _reserve(data: dict[str, Any]) -> dict[str, Any]:
+        request = reservations.parse_reserve(data)
+        if isinstance(request, dict):
+            return request
+        if request.currency != currency:
+            return _error(request.correlation_id, "currency_not_supported")
+        ids = []
+        for sku, _, _ in request.lines:
+            product_id = sku_to_product_id(sku)
+            if product_id is None:
+                return _error(request.correlation_id, "unknown_sku", sku)
+            ids.append(product_id)
+        products = await asyncio.gather(*(client.product(pid) for pid in ids))
+        for (sku, _, price), product in zip(request.lines, products, strict=True):
+            offer = choose_offer(product, currency) if product else None
+            if offer is None:
+                return _error(request.correlation_id, "unknown_sku", sku)
+            if offer[0] != price:
+                return _error(request.correlation_id, "price_changed", sku)
+        try:
+            res = book.reserve(request)
+        except reservations.ReservationError as exc:
+            return _error(request.correlation_id, exc.code, exc.sku)
+        return reservations.reserve_response(MERCHANT_CODE, request, res)
+
     @app.get("/.well-known/agent-card.json")
     async def agent_card(request: Request) -> dict[str, Any]:
         return {
@@ -283,6 +314,7 @@ def create_channel3_app(
             "skills": [
                 {"id": "search", "name": "search", "description": "Search the Channel3 catalog."},
                 {"id": "quote", "name": "quote", "description": "Quote a cart at live Channel3 prices."},
+                *reservations.SKILLS,
             ],
         }
 
@@ -310,6 +342,12 @@ def create_channel3_app(
                 result = await _search(data)
             elif kind == "clawpay.quote_request.v1":
                 result = await _quote(data)
+            elif kind == reservations.RESERVE_REQUEST:
+                result = await _reserve(data)
+            elif kind == reservations.CONFIRM_REQUEST:
+                result = reservations.handle_confirm(book, MERCHANT_CODE, data)
+            elif kind == reservations.CANCEL_REQUEST:
+                result = reservations.handle_cancel(book, MERCHANT_CODE, data)
             else:
                 result = _error(data.get("correlation_id"), "bad_request")
         except Channel3Unavailable:

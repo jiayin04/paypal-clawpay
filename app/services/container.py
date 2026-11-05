@@ -37,6 +37,7 @@ from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService, KeyResolver
 from app.services.conversation_service import ConversationService
 from app.services.device_service import DeviceService
+from app.services.fulfillment_service import FulfillmentService
 from app.services.llm_proxy_service import LLMProxyService
 from app.services.merchant_service import MerchantService
 from app.services.order_service import OrderService
@@ -70,6 +71,7 @@ class Services:
     audit: AuditService
     devices: DeviceService
     merchants: MerchantService
+    fulfillment: FulfillmentService
     orders: OrderService
     spending: SpendingService
     conversations: ConversationService
@@ -133,6 +135,7 @@ def build_services(
     audit = AuditService(repos.audit)
     spending = SpendingService(settings, repos.spending)
     merchants = MerchantService(settings, clock, audit, repos.a2a_messages, merchant_transports)
+    fulfillment = FulfillmentService(settings, repos.orders, repos.merchants, merchants)
     if paypal_gateway is None:
         if settings.paypal_agent_enabled:
             # Multi-agent mode: the PayPal agent holds the credentials; ClawPay keeps
@@ -141,7 +144,10 @@ def build_services(
         else:
             paypal_client = PayPalClient(settings, transport=paypal_transport)
             paypal_gateway = PayPalService(paypal_client)
-    payments = PaymentService(settings, clock, repos.payments, repos.orders, paypal_gateway, audit=audit)
+    payments = PaymentService(
+        settings, clock, repos.payments, repos.orders, paypal_gateway, audit=audit,
+        send_guard=fulfillment.send_guard,
+    )
     mono = clock.monotonic
     limiters = Limiters(
         auth_failures=SlidingWindowLimiter(settings.auth_failures_per_minute, 60, monotonic=mono),
@@ -176,13 +182,15 @@ def build_services(
         merchants=merchants,
         orders=OrderService(
             settings, clock, repos.orders, repos.merchants, repos.payment_methods, spending, merchants,
-            payment_repo=repos.payments, payment_service=payments,
+            payment_repo=repos.payments, payment_service=payments, fulfillment=fulfillment,
         ),
         spending=spending,
         conversations=ConversationService(settings, clock, repos.conversations),
         approvals=ApprovalService(
-            settings, clock, repos.approvals, repos.orders, payment_service=payments, payment_repo=repos.payments, audit=audit
+            settings, clock, repos.approvals, repos.orders, payment_service=payments, payment_repo=repos.payments,
+            audit=audit, fulfillment=fulfillment,
         ),
+        fulfillment=fulfillment,
         payments=payments,
         payment_methods=payment_method_svc,
         reconciliation=reconciliation,

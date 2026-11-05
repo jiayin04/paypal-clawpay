@@ -128,7 +128,7 @@ Description: "Search merchant catalogs. Show the user names and prices. Use sku 
 {"results":[{"sku":"GRC-MILK-1L","name":"Fresh milk 1L","merchant_id":"grocer","price_minor":690,"price":"RM6.90","currency":"MYR"},{"sku":"GRC-BREAD-WW","name":"Wholemeal bread","merchant_id":"grocer","price_minor":450,"price":"RM4.50","currency":"MYR"}]}
 ```
 
-`channel3` is added to both `merchant_id` enums (search and `create_order`) only when `CHANNEL3_API_KEY` or `CHANNEL3_AGENT_ENDPOINT` is set; otherwise the schemas are exactly as shown and `channel3` → `invalid_arguments`. All enabled merchants are queried in parallel unless `merchant_id` is given; if one fails, the other's results are returned. Results are sorted by (merchant_id, name). No matches → `{"results":[],"message":"No matching products."}` (not an error). Products in a currency other than `DEFAULT_CURRENCY` are dropped.
+Both `merchant_id` enums (search and `create_order`) list the enabled merchants (section 10.1). With the default settings they are exactly as shown; `channel3` is added when `CHANNEL3_API_KEY` or its endpoint is set, and `shopee`, `foodpanda`, `grab` when listed in `ENABLED_MERCHANTS`. A merchant that is not enabled → `invalid_arguments`. All enabled merchants are queried in parallel unless `merchant_id` is given; if one fails, the other's results are returned. Results are sorted by (merchant_id, name). No matches → `{"results":[],"message":"No matching products."}` (not an error). Products in a currency other than `DEFAULT_CURRENCY` are dropped.
 
 Errors: `merchant_unavailable` (all queried merchants failed), `invalid_arguments`.
 
@@ -192,6 +192,8 @@ Description: "Get the authoritative status of an order. Only tell the user a pay
 ```json
 {"order_id":"7f3c0c1e-5a1b-4c1e-9a43-0b7d2f9e6a11","status":"paid","paypal_status":"COMPLETED","total":"RM13.80","currency":"MYR","approved_at":"2026-10-24T13:06:12Z","paid_at":"2026-10-24T13:06:15Z","message":"Payment completed."}
 ```
+
+The result also has `fulfillment_status` (the merchant handoff, section 10.3: `none`, `reserved`, `reservation_failed`, `confirmed`, `fulfillment_pending`, `released`) and `merchant_reference` (the merchant's `fulfillment_id` once confirmed, else `null`). Reading the status retries an outstanding merchant confirm or release.
 
 `paypal_status` is `null` until a payment attempt exists (always `null` in Phase 2, as are `approved_at` / `paid_at`). Orders of other users and unknown ids → `not_found` with the same text (no existence leak). `order_id` must be a UUID (either case; normalised to lowercase), else `invalid_arguments`. An order still awaiting approval whose quote has expired is moved to `expired` before it is reported.
 
@@ -315,7 +317,7 @@ Server checks, in one transaction: device matches token and is active; `key_vers
 {"order_id":"7f3c0c1e-5a1b-4c1e-9a43-0b7d2f9e6a11","approval":"verified","status":"payment_pending","message":"Approved. Payment is processing."}
 ```
 
-`status` is `paid`, `payment_pending`, `payment_failed` or `denied`. The pipeline waits up to ~10 s for PayPal, then returns `payment_pending`; the LLM learns the result via `get_order_status`.
+`status` is `paid`, `payment_pending`, `payment_failed` or `denied`. Before PayPal is called, the merchant agent must reserve the cart (section 10.3); if it refuses, the answer is `payment_failed` with a fixed message saying no money was taken. The pipeline then waits up to ~10 s for PayPal, then returns `payment_pending`; the LLM learns the result via `get_order_status`. `fulfillment_status` (optional) is the merchant handoff once the payment result is known.
 
 | Status | Code |
 | --- | --- |
@@ -449,3 +451,54 @@ Status: Proposed — stretch. Auth: device token.
 `POST /api/v1/voice/stt` — body `audio/wav`, 16 kHz mono 16-bit PCM, ≤ 8 s (≤ 300 KB). `200 {"text":"buy milk and bread"}`. Errors: `413 audio_too_large`, `415 unsupported_media_type`, `502 stt_unavailable`.
 
 `POST /api/v1/voice/tts` — `{"text":"Paid RM13.80 to Grocer Demo."}` (≤ 500 chars). `200 {"url":"https://<host>/api/v1/voice/audio/<signed-id>.mp3","expires_at":"2026-10-24T13:08:00Z"}`. The audio URL is a short-lived signed URL with no header auth, because the Lua `player:play(url)` cannot add headers. Errors: `400 text_too_long`, `502 tts_unavailable`.
+
+## 10. Merchant agent protocol (A2A)
+
+Status: Implemented. ClawPay is the client; every merchant agent (mock catalogs, the Channel3 adapter, or a partner's own agent) is a server for the same messages. Code: `app/integrations/a2a/client.py` (transport), `app/services/merchant_service.py` (validation), `app/merchant_agents/` (agents), `app/services/fulfillment_service.py` (handoff).
+
+Transport: JSON-RPC 2.0 `message/send` to `POST <agent>/a2a`, one `data` part in the request and in the reply; agent card at `GET /.well-known/agent-card.json`. Reply must be HTTP 200 JSON, ≤ 64 KB, with the request's JSON-RPC `id`. A JSON-RPC `error` means the merchant is unavailable. Every answer is untrusted: ids, merchant id, items, totals and expiry are checked against what ClawPay sent, and a mismatch rejects the answer (audit `merchant.response_rejected`), it is never corrected.
+
+### 10.1 Registry and configuration
+
+Merchants are listed in `app/merchant_agents/registry.py`. A spec's kind decides how ClawPay reaches it when no URL is configured:
+
+| Kind | Agent | Enabled when |
+| --- | --- | --- |
+| `catalog` | in-process mock, catalog in `catalogs.py` (`grocer`, `electronics`, `shopee`, `foodpanda`, `grab`) | listed in `ENABLED_MERCHANTS` (default `grocer,electronics`) |
+| `api` | in-process adapter for a real API (`channel3`) | adapter configured (`CHANNEL3_API_KEY`) or a URL is set |
+| `remote` | hosted elsewhere | a URL is set |
+
+`MERCHANT_AGENT_ENDPOINTS=code=url,code=url` sends that merchant's calls over HTTP (https, or http to 127.0.0.1/localhost). It wins over the legacy `GROCER_AGENT_ENDPOINT` / `ELECTRONICS_AGENT_ENDPOINT` / `CHANNEL3_AGENT_ENDPOINT`. Codes must be in the registry. The MCP `merchant_id` enums list the enabled merchants in registry order. Each merchant also needs a `public.merchants` row (migration; `seed.sql` is generated from the migrations).
+
+Shopee, Foodpanda and Grab are demo agents modelled on those platforms; they do not talk to the real services. One item in each is sold out (`SHP-PLUSH-LTD`, `FPD-DURIAN-CREPE`, `GRB-RIDE-PREMIUM`) to demo a refused reservation.
+
+### 10.2 Messages
+
+| Request `type` | Answer `type` | Purpose |
+| --- | --- | --- |
+| `clawpay.search_request.v1` {query, max_results} | `clawpay.search_response.v1` {merchant_id, products[{sku, name, unit_price_minor, currency}]} | search |
+| `clawpay.quote_request.v1` {items[{sku, qty}], currency} | `clawpay.quote_response.v1` {merchant_id, merchant_name, quote_id, currency, items[{sku, name, qty, unit_price_minor, line_total_minor}], subtotal_minor, total_minor, expires_at} | price a cart for `create_order` |
+| `clawpay.reserve_request.v1` {order_ref, currency, items[{sku, qty, unit_price_minor}], total_minor} | `clawpay.reserve_response.v1` {merchant_id, order_ref, reservation_id, currency, items[{sku, qty}], total_minor, expires_at} | hold the approved cart before payment |
+| `clawpay.confirm_request.v1` {order_ref, reservation_id} | `clawpay.confirm_response.v1` {merchant_id, order_ref, reservation_id, fulfillment_id, status: "accepted"} | the order is paid; merchant accepts it |
+| `clawpay.cancel_request.v1` {order_ref, reservation_id?} | `clawpay.cancel_response.v1` {merchant_id, order_ref, status: "released"} | release the hold |
+
+Every request and answer carries `correlation_id`, which the answer must echo. `order_ref` is the ClawPay order id. `reservation_id` and `fulfillment_id` match `^[A-Za-z0-9_-]{1,64}$`. A reserve answer must echo the exact skus, quantities, currency and total, and expire 30 s to 24 h from now. Reserve is idempotent per `order_ref`. Cancel without `reservation_id` releases whatever the merchant holds for the order; cancelling nothing is a success.
+
+Refusals are `clawpay.error.v1` {correlation_id, code, sku?} with code `bad_request`, `unknown_sku`, `currency_not_supported`, `out_of_stock`, `price_changed`, `unknown_reservation`, `reservation_expired` or `already_confirmed`.
+
+The mock agents hold stock in memory for 15 minutes (the reconciler's replay window). The Channel3 agent re-checks live prices on reserve but cannot hold retailer stock; its confirm is an acknowledgement, not a retailer order.
+
+### 10.3 Reserve before pay
+
+`MERCHANT_FULFILLMENT_ENABLED=true` (default). Each reserve/confirm/cancel call times out at `min(MERCHANT_FULFILLMENT_TIMEOUT_SECONDS, MERCHANT_AGENT_TIMEOUT_SECONDS)` (default 3 s).
+
+1. After a verified gadget approval creates the payment attempt, ClawPay sends `reserve` with the order's stored items and total.
+2. Refused, unanswered or invalid → the never-sent attempt fails (`failure_code` `merchant_out_of_stock`, `merchant_price_changed`, `merchant_unknown_sku`, `merchant_unavailable`, `merchant_fulfillment_invalid`), spending is released, the order becomes `payment_failed`, and the approval answer says no money was taken. ClawPay also sends a best-effort `cancel` when it could not read the merchant's answer.
+3. Reserved → PayPal create/capture as before.
+4. Paid → `confirm`. A confirm failure never undoes the payment: fulfillment becomes `fulfillment_pending` and is retried on `get_order_status`. If the merchant lost the hold, ClawPay reserves again and confirms.
+5. Payment failed → `cancel`; fulfillment becomes `released`.
+6. Payment still pending → the hold stays; status reads confirm or release it once the payment resolves.
+
+The reconciler never sends a first PayPal request for an order whose merchant has not reserved (`failure_code` `merchant_not_reserved`).
+
+Fulfillment state is `orders.fulfillment_status` (`none`, `reserved`, `reservation_failed`, `confirmed`, `fulfillment_pending`, `released`), with `merchant_reservation_id` and `merchant_fulfillment_id`, written only by `set_order_fulfillment` (compare-and-set, audit `order.fulfillment_changed`). It is separate from the order status machine in section 8. Every reserve/confirm/cancel exchange is in `a2a_messages` with the order id.

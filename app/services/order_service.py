@@ -27,6 +27,7 @@ from app.repositories.ports.payment_methods import PaymentMethodRepository
 from app.repositories.ports.payments import PaymentRepository
 from app.services.context import DeviceContext
 from app.services.errors import ToolError
+from app.services.fulfillment_service import FulfillmentService
 from app.services.merchant_service import A2ALog, MerchantFailure, MerchantService
 from app.services.spending_service import SpendingService
 
@@ -83,6 +84,7 @@ class OrderService:
         merchant_service: MerchantService,
         payment_repo: PaymentRepository | None = None,
         payment_service: object | None = None,  # PaymentService – imported lazily to avoid cycle
+        fulfillment: FulfillmentService | None = None,
     ) -> None:
         self._settings = settings
         self._clock = clock
@@ -93,6 +95,7 @@ class OrderService:
         self._merchant_service = merchant_service
         self._payment_repo = payment_repo
         self._payment_service = payment_service
+        self._fulfillment = fulfillment
 
     # -- create_order ----------------------------------------------------------------
 
@@ -250,6 +253,7 @@ class OrderService:
         paypal_status: str | None = None
         paid_at: str | None = None
         approved_at: str | None = None
+        current = order
         if api_status in ("payment_pending", "requires_reconciliation") and self._payment_service is not None:
             try:
                 await self._payment_service.reconcile_order(order_id)  # type: ignore[union-attr]
@@ -259,10 +263,21 @@ class OrderService:
             try:
                 refreshed = await self._orders.get_for_user(order_id, device.user_id)
                 if refreshed is not None:
+                    current = refreshed
                     status = await self._expire_if_needed(refreshed)
                     api_status = to_api_status(status)
             except Exception:
                 pass
+
+        # Merchant handoff: finish a confirm/release the approval request could not.
+        fulfillment_status = current.fulfillment_status
+        merchant_reference = current.merchant_fulfillment_id
+        if self._fulfillment is not None:
+            try:
+                view = await self._fulfillment.resolve(current, status)
+                fulfillment_status, merchant_reference = view.status, view.merchant_reference
+            except Exception as exc:
+                logger.warning("fulfillment resolve failed for %s: %s", order_id, type(exc).__name__)
 
         # Fill payment details from the latest attempt if available
         if self._payment_repo is not None:
@@ -284,6 +299,8 @@ class OrderService:
             "approved_at": approved_at,
             "paid_at": paid_at,
             "message": STATUS_MESSAGES.get(api_status, ""),
+            "fulfillment_status": fulfillment_status,
+            "merchant_reference": merchant_reference,
         }
 
     # -- cancel (dashboard) ----------------------------------------------------------------

@@ -67,7 +67,7 @@ def test_jsonrpc_errors_and_agent_card() -> None:
     assert client.post("/a2a", json={"jsonrpc": "2.0", "id": 1, "method": "x"}).json()["error"]["code"] == -32601
     card = client.get("/.well-known/agent-card.json").json()
     assert card["name"] == "Grocer Demo"
-    assert {s["id"] for s in card["skills"]} == {"search", "quote"}
+    assert {s["id"] for s in card["skills"]} == {"search", "quote", "reserve", "confirm", "cancel"}
     with pytest.raises(ValueError):
         create_merchant_app("bank")
 

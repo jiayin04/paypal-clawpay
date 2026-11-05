@@ -11,7 +11,8 @@ from app.repositories.supabase.base import _SupabaseBase, parse_ts
 
 
 _ORDER_COLUMNS = ("id,user_id,device_id,merchant_id,currency,subtotal_minor,total_minor,status,"
-                  "quote_expires_at,created_at,updated_at,cart_sha256")
+                  "quote_expires_at,created_at,updated_at,cart_sha256,"
+                  "fulfillment_status,merchant_reservation_id,merchant_fulfillment_id")
 
 
 def _order(row: Mapping[str, Any]) -> OrderRecord:
@@ -28,6 +29,9 @@ def _order(row: Mapping[str, Any]) -> OrderRecord:
         created_at=parse_ts(row["created_at"]),  # type: ignore[arg-type]
         updated_at=parse_ts(row["updated_at"]),  # type: ignore[arg-type]
         cart_sha256=row.get("cart_sha256"),
+        fulfillment_status=row.get("fulfillment_status") or "none",
+        merchant_reservation_id=row.get("merchant_reservation_id"),
+        merchant_fulfillment_id=row.get("merchant_fulfillment_id"),
     )
 
 
@@ -129,3 +133,24 @@ class SupabaseOrderRepository(_SupabaseBase):
             .execute()
         )
         return [_order(r) for r in response.data or []]
+
+    async def set_fulfillment(
+        self,
+        *,
+        order_id: str,
+        expected: Sequence[str],
+        status: str,
+        reservation_id: str | None = None,
+        fulfillment_id: str | None = None,
+    ) -> RpcResult:
+        row = await self._rpc_one(
+            "set_order_fulfillment",
+            {
+                "p_order_id": order_id,
+                "p_expected": list(expected),
+                "p_status": status,
+                "p_reservation_id": reservation_id,
+                "p_fulfillment_id": fulfillment_id,
+            },
+        )
+        return RpcResult(bool(row["ok"]), row["reason"], {"fulfillment_status": row.get("fulfillment_status")})

@@ -1,7 +1,15 @@
-"""Payment execution and reconciliation using atomic repository transitions."""
+"""Payment execution and reconciliation using atomic repository transitions.
+
+``send_guard`` (optional) is asked before an attempt is sent to PayPal for the
+first time, by the inline path and the reconciler alike. It returns a failure
+code to fail the never-sent attempt instead (no money moves), or None to send.
+The merchant fulfillment check uses it so no order is charged unless its
+merchant agent has reserved the cart.
+"""
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import replace
 
 import anyio
@@ -19,6 +27,9 @@ from app.services.audit_service import AuditService
 
 logger = logging.getLogger(__name__)
 
+SendGuard = Callable[[PaymentAttemptRecord], Awaitable[str | None]]
+
+
 class PaymentService:
     def __init__(
         self,
@@ -28,11 +39,21 @@ class PaymentService:
         order_repo: OrderRepository,
         paypal: PayPalGateway,
         audit: AuditService | None = None,
+        send_guard: SendGuard | None = None,
     ) -> None:
         self._settings, self._clock = settings, clock
         self._payment_repo, self._order_repo, self._paypal = with_rpc_retry(payment_repo), order_repo, paypal
         self._reconcile_throttles: dict[str, float] = {}
         self._audit = audit
+        self._send_guard = send_guard
+
+    async def fail_unsent(self, attempt: PaymentAttemptRecord, failure_code: str) -> PaymentClassification:
+        """Fail an attempt that was never sent to PayPal; releases the spending reservation."""
+        if attempt.status != "initiated" or attempt.first_sent_at is not None:
+            return PaymentClassification("no_result")
+        result = PaymentClassification("failed", failure_code=failure_code)
+        await self._apply(attempt, result, "first_create")
+        return result
 
     async def _token(self) -> bool:
         try:
@@ -89,6 +110,15 @@ class PaymentService:
     async def execute(self, attempt: PaymentAttemptRecord) -> PaymentClassification:
         if attempt.status != "initiated":
             return PaymentClassification("no_result")
+        if self._send_guard is not None and attempt.first_sent_at is None:
+            try:
+                blocked = await self._send_guard(attempt)
+            except Exception as exc:
+                # Unknown: do not send now; the reconciler asks again later.
+                logger.warning("payment send guard failed: %s", type(exc).__name__)
+                return PaymentClassification("no_result")
+            if blocked:
+                return await self.fail_unsent(attempt, blocked)
         if not await self._token():
             return PaymentClassification("no_result")
         previous = await self._payment_repo.mark_attempt_sent(attempt.id)

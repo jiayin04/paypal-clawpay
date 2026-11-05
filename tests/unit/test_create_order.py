@@ -241,7 +241,8 @@ def test_get_order_status_and_uuid_normalisation() -> None:
         assert not is_error
         assert out == {"order_id": created["order_id"], "status": "awaiting_device_approval", "paypal_status": None,
                        "total": "RM13.80", "currency": "MYR", "approved_at": None, "paid_at": None,
-                       "message": "Waiting for approval on the device."}
+                       "message": "Waiting for approval on the device.",
+                       "fulfillment_status": "none", "merchant_reference": None}
 
 
 def test_get_order_status_foreign_and_missing() -> None:

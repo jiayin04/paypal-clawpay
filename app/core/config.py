@@ -59,6 +59,26 @@ _OPTIONAL_FIELDS = (
     "channel3_agent_endpoint",
 )
 
+_MERCHANT_CODE_RE = re.compile(r"^[a-z0-9_-]{1,32}$")
+
+
+def _check_upstream_url(value: str, env_name: str) -> str:
+    """https://, or http:// only to a loopback host; no credentials in the URL."""
+    value = value.strip().rstrip("/")
+    parts = urlsplit(value)
+    ok = (
+        not parts.username
+        and not parts.password
+        and bool(parts.hostname)
+        and (
+            parts.scheme == "https"
+            or (parts.scheme == "http" and parts.hostname in _LOOPBACK_HOSTS)
+        )
+    )
+    if not ok:
+        raise ValueError(f"{env_name} must be an https:// URL, or http:// to 127.0.0.1/localhost")
+    return value
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -132,7 +152,14 @@ class Settings(BaseSettings):
     device_owner_registration_enabled: bool = False
     device_token_pepper: SecretStr | None = None  # HMAC pepper for hashing device tokens
 
-    # Merchant agents and orders
+    # Merchant agents and orders (registry: app/merchant_agents/registry.py)
+    # Mock catalog merchants to enable, comma separated. Empty = grocer,electronics.
+    enabled_merchants: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    # Merchant agent URLs, "code=url,code=url". Overrides the legacy *_AGENT_ENDPOINT vars.
+    merchant_agent_endpoints: Annotated[dict[str, str], NoDecode] = Field(default_factory=dict)
+    # Reserve the cart with the merchant agent before paying, confirm after capture.
+    merchant_fulfillment_enabled: bool = True
+    merchant_fulfillment_timeout_seconds: float = Field(3.0, ge=0.5, le=8)
     merchant_agent_timeout_seconds: float = Field(8.0, gt=0, le=15)
     quote_ttl_seconds: int = Field(300, ge=60, le=1800)
     challenge_ttl_seconds: int = Field(120, ge=30, le=300)
@@ -186,23 +213,41 @@ class Settings(BaseSettings):
     def _validate_upstream_url(cls, value: str | None, info: Any) -> str | None:
         if value is None:
             return None
-        env_name = _UPSTREAM_URL_FIELDS[info.field_name]
-        value = value.strip().rstrip("/")
-        parts = urlsplit(value)
-        ok = (
-            not parts.username
-            and not parts.password
-            and bool(parts.hostname)
-            and (
-                parts.scheme == "https"
-                or (parts.scheme == "http" and parts.hostname in _LOOPBACK_HOSTS)
-            )
-        )
-        if not ok:
-            raise ValueError(
-                f"{env_name} must be an https:// URL, or http:// to 127.0.0.1/localhost"
-            )
+        return _check_upstream_url(value, _UPSTREAM_URL_FIELDS[info.field_name])
+
+    @field_validator("enabled_merchants", mode="before")
+    @classmethod
+    def _split_merchants(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            value = value.split(",")
+        if isinstance(value, (list, tuple)):
+            return [str(v).strip().lower() for v in value if str(v).strip()]
         return value
+
+    @field_validator("merchant_agent_endpoints", mode="before")
+    @classmethod
+    def _parse_merchant_endpoints(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            pairs: dict[str, str] = {}
+            for entry in value.split(","):
+                if not entry.strip():
+                    continue
+                code, sep, url = entry.partition("=")
+                if not sep:
+                    raise ValueError("MERCHANT_AGENT_ENDPOINTS entries must look like code=url")
+                pairs[code.strip().lower()] = url.strip()
+            return pairs
+        return value
+
+    @field_validator("merchant_agent_endpoints", mode="after")
+    @classmethod
+    def _validate_merchant_endpoints(cls, value: dict[str, str]) -> dict[str, str]:
+        checked: dict[str, str] = {}
+        for code, url in value.items():
+            if not _MERCHANT_CODE_RE.match(code):
+                raise ValueError("MERCHANT_AGENT_ENDPOINTS: merchant codes are lowercase letters, digits, - or _")
+            checked[code] = _check_upstream_url(url, f"MERCHANT_AGENT_ENDPOINTS[{code}]")
+        return checked
 
     @field_validator("log_format", mode="before")
     @classmethod
@@ -244,6 +289,25 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"unsupported env vars ({hints}); set the *_MINOR variables in minor units "
                 "(e.g. RM100 = 10000)"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _merchant_registry_checks(self) -> Settings:
+        from app.merchant_agents import registry
+
+        unknown = [c for c in self.enabled_merchants if c not in registry.CATALOG_CODES]
+        if unknown:
+            raise ValueError(
+                f"ENABLED_MERCHANTS: {', '.join(unknown)} is not a catalog merchant "
+                f"(choose from {', '.join(registry.CATALOG_CODES)}; API and remote merchants "
+                "are enabled by their key or MERCHANT_AGENT_ENDPOINTS)"
+            )
+        unregistered = [c for c in self.merchant_agent_endpoints if c not in registry.BY_CODE]
+        if unregistered:
+            raise ValueError(
+                f"MERCHANT_AGENT_ENDPOINTS: {', '.join(unregistered)} is not in "
+                "app/merchant_agents/registry.py"
             )
         return self
 
@@ -317,12 +381,14 @@ class Settings(BaseSettings):
 
     @property
     def channel3_enabled(self) -> bool:
-        return self.channel3_api_key is not None or bool(self.channel3_agent_endpoint)
+        return "channel3" in self.merchant_codes
 
     @property
     def merchant_codes(self) -> tuple[str, ...]:
-        """Merchant agents ClawPay may call, in tool-schema order."""
-        return ("grocer", "electronics", "channel3") if self.channel3_enabled else ("grocer", "electronics")
+        """Merchant agents ClawPay may call, in tool-schema order (see merchant_agents/registry.py)."""
+        from app.merchant_agents import registry
+
+        return registry.enabled_codes(self)
 
     @property
     def paypal_agent_enabled(self) -> bool:
