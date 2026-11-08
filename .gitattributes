@@ -6,4 +6,4 @@
 *.yml text eol=lf
 *.yaml text eol=lf
 # Preserve the exact bytes of the already-applied migration (checksum tested).
-supabase/migrations/20261024133807_initial_schema.sql -text
+backend/supabase/migrations/20261024133807_initial_schema.sql -text

@@ -14,8 +14,8 @@ __pycache__/
 htmlcov/
 
 # Supabase CLI local state
-supabase/.branches/
-supabase/.temp/
+backend/supabase/.branches/
+backend/supabase/.temp/
 
 # Agent workflow scratch
 .agents/
@@ -36,6 +36,6 @@ xcuserdata/
 
 # Web dashboard
 node_modules/
-dashboard/dist/
+frontend/dist/
 *.tsbuildinfo
 .impeccable/review/

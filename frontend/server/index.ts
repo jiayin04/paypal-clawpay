@@ -3,7 +3,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { createApp } from "./app.ts";
 // Node 24 loads the existing backend env without exposing it to Vite.
 try {
-    process.loadEnvFile("../.env");
+    process.loadEnvFile("../backend/.env");
 } catch {
     /* optional in deployed environments */
 }
