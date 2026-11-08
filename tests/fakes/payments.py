@@ -21,6 +21,7 @@ def make_payment_service(
     store = InMemoryStore(clock)
     transport = paypal_transport or FakePayPalTransport()
     settings = Settings(
+        _env_file=None,
         app_env="test",
         supabase_url="http://supabase.test",
         supabase_service_role_key="fake-key",

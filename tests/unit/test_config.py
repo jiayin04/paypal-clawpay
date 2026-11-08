@@ -113,6 +113,23 @@ def test_blank_spec_major_unit_names_ignored(monkeypatch: pytest.MonkeyPatch) ->
     assert make().phone_approval_threshold_minor == 10000
 
 
+@pytest.mark.parametrize(("url", "primary", "expected"), [
+    ("https://api.deepseek.com", "", "deepseek-test-secret"),
+    ("https://api.deepseek.com/v1", "explicit-test-secret", "explicit-test-secret"),
+    ("https://api.openai.com/v1", "", None),
+])
+def test_deepseek_key_fallback_is_scoped_to_provider(tmp_path, url, primary, expected):
+    env_file = tmp_path / ".env"
+    env_file.write_text(f"LLM_PROXY_UPSTREAM_BASE_URL={url}\n"
+                        f"LLM_PROXY_UPSTREAM_API_KEY={primary}\n"
+                        "DEEPSEEK_API_KEY=deepseek-test-secret\n")
+    settings = Settings(_env_file=env_file)
+    key = settings.llm_proxy_upstream_api_key
+    assert (key.get_secret_value() if key else None) == expected
+    assert "deepseek-test-secret" not in repr(settings)
+    assert "deepseek-test-secret" in settings.secret_values()
+
+
 def test_secrets_not_rendered(monkeypatch: pytest.MonkeyPatch) -> None:
     secret = "super-secret-service-role-key"
     monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", secret)

@@ -44,6 +44,8 @@ from app.services.payment_method_service import PaymentMethodService
 from app.services.payment_service import PaymentService
 from app.services.reconciliation_service import ReconciliationService
 from app.services.spending_service import SpendingService
+from app.services.tts_service import TTSService
+from app.services.stt_service import STTService
 from app.services.webhook_service import WebhookService
 
 
@@ -81,6 +83,8 @@ class Services:
     limiters: Limiters
     webhooks: WebhookService
     llm: LLMProxyService
+    tts: TTSService
+    stt: STTService
 
 
 def _lazy_client_provider(settings: Settings) -> Callable[[], Client]:
@@ -127,6 +131,8 @@ def build_services(
     paypal_transport: httpx.AsyncBaseTransport | None = None,
     paypal_agent_transport: httpx.AsyncBaseTransport | None = None,
     llm_client: httpx.AsyncClient | None = None,
+    tts_client: httpx.AsyncClient | None = None,
+    stt_client: httpx.AsyncClient | None = None,
 ) -> Services:
     clock = clock or SystemClock()
     repos = repos or supabase_repositories(settings)
@@ -190,4 +196,6 @@ def build_services(
         limiters=limiters,
         webhooks=WebhookService(settings,clock,repos.webhooks,repos.payments,paypal_gateway,audit),
         llm=LLMProxyService(settings,clock,llm_client or httpx.AsyncClient(timeout=settings.llm_proxy_timeout_seconds)),
+        tts=TTSService(settings, clock, tts_client or httpx.AsyncClient(timeout=settings.fish_audio_timeout_seconds)),
+        stt=STTService(settings, clock, stt_client or httpx.AsyncClient(timeout=settings.fish_audio_timeout_seconds)),
     )

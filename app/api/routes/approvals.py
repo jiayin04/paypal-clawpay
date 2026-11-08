@@ -72,6 +72,15 @@ async def get_approval_challenge(
     return result
 
 
+@router.get("/{order_id}/receipt")
+async def get_device_receipt(
+    order_id: str,
+    device: Annotated[DeviceContext, Depends(require_device)],
+    services: ServicesDep,
+) -> dict[str, Any]:
+    return await services.orders.receipt(device, _order_id(order_id))
+
+
 @router.post("/{order_id}/gadget-approval", response_model=GadgetApprovalResponse)
 async def submit_gadget_approval(
     order_id: str,

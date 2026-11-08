@@ -286,6 +286,24 @@ class OrderService:
             "message": STATUS_MESSAGES.get(api_status, ""),
         }
 
+    async def receipt(self, device: DeviceContext, order_id: str) -> dict[str, Any]:
+        """Saved cart and verified payment status for this device; no retailer-order claim."""
+        order = await self._orders.get_for_user(order_id, device.user_id)
+        if order is None or order.device_id != device.device_id:
+            raise ApiError(404, "order_not_found", "Order not found.")
+        status = await self.get_order_status(device, order_id)
+        items = await self._orders.list_items(order_id)
+        merchant = await self._merchants.get_by_id(order.merchant_id)
+        return {
+            **status,
+            "merchant": merchant.display_name if merchant else "ClawPay merchant",
+            "items": [{"name": item.description or item.product_reference, "qty": item.quantity,
+                       "line_total": format_display(item.line_total_minor, order.currency)} for item in items],
+            "payment_environment": "sandbox",
+            "fulfillment_mode": "simulated",
+            "retailer_order_status": "not_submitted",
+        }
+
     # -- cancel (dashboard) ----------------------------------------------------------------
 
     async def cancel(self, order_id: str, user_id: str) -> dict[str, Any]:

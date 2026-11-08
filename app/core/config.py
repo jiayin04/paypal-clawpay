@@ -51,12 +51,15 @@ _OPTIONAL_FIELDS = (
     "device_token_pepper",
     "llm_proxy_upstream_base_url",
     "llm_proxy_upstream_api_key",
+    "deepseek_api_key",
     "llm_proxy_model",
     "internal_service_token",
     "metrics_token",
     "paypal_agent_token",
     "channel3_api_key",
     "channel3_agent_endpoint",
+    "fish_audio_api_key",
+    "fish_audio_voice_id",
 )
 
 
@@ -141,12 +144,20 @@ class Settings(BaseSettings):
     # OpenAI-compatible LLM proxy for the device (Phase 4); upstream key stays server-side
     llm_proxy_upstream_base_url: str | None = None
     llm_proxy_upstream_api_key: SecretStr | None = None
+    deepseek_api_key: SecretStr | None = None  # fallback for the direct DeepSeek upstream only
     llm_proxy_model: str | None = None
     llm_proxy_max_tokens: int = Field(1024, ge=1, le=8192)
     llm_proxy_requests_per_minute: int = Field(20, ge=1)
     llm_proxy_daily_token_limit: int = Field(200000, ge=0)
     llm_proxy_max_body_bytes: int = Field(262144, ge=1024)
     llm_proxy_timeout_seconds: float = Field(110.0, gt=0)
+
+    # Fish Audio text-to-speech for watch replies (POST /api/v1/assistant/speech); key stays server-side
+    fish_audio_api_key: SecretStr | None = None
+    fish_audio_voice_id: str | None = None  # reference_id of a Fish Audio voice; unset = Fish default voice
+    fish_audio_model: Literal["s1", "s2-pro", "s2.1-pro", "s2.1-pro-free", "drama-3"] = "s2.1-pro"
+    fish_audio_requests_per_minute: int = Field(20, ge=1)
+    fish_audio_timeout_seconds: float = Field(20.0, gt=0, le=60)
 
     # Spending policy (minor units)
     phone_approval_threshold_minor: int = Field(10000, ge=0)
@@ -257,6 +268,9 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _startup_checks(self) -> Settings:
+        if (self.llm_proxy_upstream_api_key is None
+                and urlsplit(self.llm_proxy_upstream_base_url or "").hostname == "api.deepseek.com"):
+            self.llm_proxy_upstream_api_key = self.deepseek_api_key
         if self.paypal_env == "live":
             raise ValueError("PAYPAL_ENV: live PayPal is not supported in this build")
         if self.default_currency not in EXPONENTS:

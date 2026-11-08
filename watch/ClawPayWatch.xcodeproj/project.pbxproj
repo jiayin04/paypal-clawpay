@@ -1,0 +1,281 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		C1A000000000000000000011 /* ClawPayWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A000000000000000000001 /* ClawPayWatchApp.swift */; };
+		C1A000000000000000000012 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A000000000000000000002 /* ContentView.swift */; };
+		C1A000000000000000000013 /* AssistantClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A000000000000000000003 /* AssistantClient.swift */; };
+		C1A000000000000000000014 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A000000000000000000006 /* Theme.swift */; };
+		C1A000000000000000000015 /* SpeechPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A000000000000000000007 /* SpeechPlayer.swift */; };
+		C1A000000000000000000016 /* ApproverKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A000000000000000000008 /* ApproverKey.swift */; };
+		C1A000000000000000000017 /* VoiceIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A000000000000000000009 /* VoiceIntent.swift */; };
+		C1A000000000000000000018 /* SpeechCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00000000000000000000A /* SpeechCapture.swift */; };
+		C1A000000000000000000019 /* VoiceAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00000000000000000000B /* VoiceAudio.swift */; };
+		C1A00000000000000000001A /* DemoDelivery.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00000000000000000000C /* DemoDelivery.swift */; };
+		C1A00000000000000000001B /* DeliveryLocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00000000000000000000D /* DeliveryLocation.swift */; };
+		C1A00000000000000000001C /* DeliveryAddressPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00000000000000000000E /* DeliveryAddressPicker.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		C1A000000000000000000001 /* ClawPayWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClawPayWatchApp.swift; sourceTree = "<group>"; };
+		C1A000000000000000000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		C1A000000000000000000003 /* AssistantClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantClient.swift; sourceTree = "<group>"; };
+		C1A000000000000000000006 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		C1A000000000000000000007 /* SpeechPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechPlayer.swift; sourceTree = "<group>"; };
+		C1A000000000000000000008 /* ApproverKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApproverKey.swift; sourceTree = "<group>"; };
+		C1A000000000000000000009 /* VoiceIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceIntent.swift; sourceTree = "<group>"; };
+		C1A00000000000000000000A /* SpeechCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechCapture.swift; sourceTree = "<group>"; };
+		C1A000000000000000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		C1A000000000000000000005 /* ClawPayWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClawPayWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C1A00000000000000000000B /* VoiceAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceAudio.swift; sourceTree = "<group>"; };
+		C1A00000000000000000000C /* DemoDelivery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoDelivery.swift; sourceTree = "<group>"; };
+		C1A00000000000000000000D /* DeliveryLocation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryLocation.swift; sourceTree = "<group>"; };
+		C1A00000000000000000000E /* DeliveryAddressPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryAddressPicker.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		C1A000000000000000000021 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		C1A000000000000000000031 = {
+			isa = PBXGroup;
+			children = (
+				C1A000000000000000000032 /* ClawPayWatch */,
+				C1A000000000000000000033 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		C1A000000000000000000032 /* ClawPayWatch */ = {
+			isa = PBXGroup;
+			children = (
+				C1A000000000000000000001 /* ClawPayWatchApp.swift */,
+				C1A000000000000000000002 /* ContentView.swift */,
+				C1A000000000000000000003 /* AssistantClient.swift */,
+				C1A000000000000000000008 /* ApproverKey.swift */,
+				C1A000000000000000000009 /* VoiceIntent.swift */,
+				C1A00000000000000000000A /* SpeechCapture.swift */,
+				C1A00000000000000000000B /* VoiceAudio.swift */,
+				C1A00000000000000000000C /* DemoDelivery.swift */,
+				C1A00000000000000000000E /* DeliveryAddressPicker.swift */,
+				C1A00000000000000000000D /* DeliveryLocation.swift */,
+				C1A000000000000000000007 /* SpeechPlayer.swift */,
+				C1A000000000000000000006 /* Theme.swift */,
+				C1A000000000000000000004 /* Info.plist */,
+			);
+			path = ClawPayWatch;
+			sourceTree = "<group>";
+		};
+		C1A000000000000000000033 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				C1A000000000000000000005 /* ClawPayWatch.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		C1A000000000000000000041 /* ClawPayWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C1A000000000000000000062 /* Build configuration list for PBXNativeTarget "ClawPayWatch" */;
+			buildPhases = (
+				C1A000000000000000000022 /* Sources */,
+				C1A000000000000000000021 /* Frameworks */,
+				C1A000000000000000000023 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ClawPayWatch;
+			productName = ClawPayWatch;
+			productReference = C1A000000000000000000005 /* ClawPayWatch.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		C1A000000000000000000051 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1620;
+				LastUpgradeCheck = 1620;
+			};
+			buildConfigurationList = C1A000000000000000000061 /* Build configuration list for PBXProject "ClawPayWatch" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = C1A000000000000000000031;
+			productRefGroup = C1A000000000000000000033 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				C1A000000000000000000041 /* ClawPayWatch */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		C1A000000000000000000023 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		C1A000000000000000000022 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C1A000000000000000000011 /* ClawPayWatchApp.swift in Sources */,
+				C1A000000000000000000012 /* ContentView.swift in Sources */,
+				C1A000000000000000000013 /* AssistantClient.swift in Sources */,
+				C1A000000000000000000014 /* Theme.swift in Sources */,
+				C1A000000000000000000015 /* SpeechPlayer.swift in Sources */,
+				C1A000000000000000000016 /* ApproverKey.swift in Sources */,
+				C1A000000000000000000017 /* VoiceIntent.swift in Sources */,
+				C1A000000000000000000018 /* SpeechCapture.swift in Sources */,
+				C1A000000000000000000019 /* VoiceAudio.swift in Sources */,
+				C1A00000000000000000001A /* DemoDelivery.swift in Sources */,
+				C1A00000000000000000001C /* DeliveryAddressPicker.swift in Sources */,
+				C1A00000000000000000001B /* DeliveryLocation.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		C1A000000000000000000071 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = watchos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Debug;
+		};
+		C1A000000000000000000072 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				SDKROOT = watchos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Release;
+		};
+		C1A000000000000000000073 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ClawPayWatch/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ClawPay;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKApplication = YES;
+				INFOPLIST_KEY_WKWatchOnly = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.clawpay.watch;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+			};
+			name = Debug;
+		};
+		C1A000000000000000000074 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ClawPayWatch/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ClawPay;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKApplication = YES;
+				INFOPLIST_KEY_WKWatchOnly = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.clawpay.watch;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		C1A000000000000000000061 /* Build configuration list for PBXProject "ClawPayWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C1A000000000000000000071 /* Debug */,
+				C1A000000000000000000072 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C1A000000000000000000062 /* Build configuration list for PBXNativeTarget "ClawPayWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C1A000000000000000000073 /* Debug */,
+				C1A000000000000000000074 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = C1A000000000000000000051 /* Project object */;
+}

@@ -1,6 +1,6 @@
 # ClawPay Middleware
 
-Implemented backend for phases 0–4: ESP-Claw calls four stateless MCP tools, deterministic A2A merchants supply validated quotes, a device P-256 signature authorizes payment, and the backend handles PayPal Sandbox execution, spending reservations and reconciliation. Includes verified webhooks, an OpenAI-compatible LLM proxy, and user-scoped dashboard APIs. Firmware and a dashboard frontend are separate work.
+Implemented backend for phases 0–4: ESP-Claw calls four stateless MCP tools, deterministic A2A merchants supply validated quotes, a device P-256 signature authorizes payment, and the backend handles PayPal Sandbox execution, spending reservations and reconciliation. Includes verified webhooks, an OpenAI-compatible LLM proxy, and user-scoped dashboard APIs. Includes a responsive Vite + React dashboard with a Hono read-only proxy; see [dashboard setup](dashboard/README.md).
 
 - [Backend + ESP-Claw setup](docs/setup.md)
 - [Integration contracts](docs/contracts.md)
@@ -65,6 +65,12 @@ RLS scopes reads to the user; explicit column grants hide tokens, provider refer
 | `GET /api/v1/payment-methods`, `DELETE /api/v1/payment-methods/{id}` | JWT; masked email, no vault references |
 | `POST /api/v1/webhooks/paypal` | See unauthenticated table below |
 | `POST /llm/v1/chat/completions` | `cpl_` only; model pinned, bounded tokens and daily usage |
+| `GET /api/v1/orders/{order_id}/receipt` | `cpd_`; saved cart and verified payment status, restricted to the original device; fulfillment explicitly simulated |
+| `POST /api/v1/assistant/messages/stream` | `cpd_`; live action summaries and one final result as NDJSON; no private reasoning tokens |
+| `POST /api/v1/assistant/messages` | `cpd_`; mounted with MCP; text in, spoken-style reply out (server-side tool loop for watch/voice) |
+| `POST /api/v1/assistant/speech` | `cpd_`; mounted with MCP; reply text in, Fish Audio MP3 out; 503 when `FISH_AUDIO_API_KEY` is unset |
+| `POST /api/v1/assistant/speech/stream` | `cpd_`; reply text in, low-latency streamed 24 kHz mono PCM out; used by the watch without full-clip buffering |
+| `POST /api/v1/assistant/transcriptions` | `cpd_`; raw 16 kHz mono 16-bit WAV, ≤30 s / 1 MiB; text out via Fish Audio ASR; never executes agent tools |
 
 JWT dashboard reads require `SUPABASE_PUBLISHABLE_KEY`; unset → `503 dashboard_not_configured`. List pagination uses `limit=1..100` (default 20), `before=<created_at ISO timestamp>`. There is no charge/approve/capture/refund/transfer MCP tool.
 
@@ -96,6 +102,24 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --no-access
 ```
 
 with ClawPay's env containing `PAYPAL_AGENT_ENDPOINT=http://127.0.0.1:8201/a2a` and the same `PAYPAL_AGENT_TOKEN`. In that mode ClawPay needs no PayPal credentials. Only PayPal's own error responses (status, name, issue, debug_id) cross back as API errors; an unreachable, unauthorised or misbehaving agent is treated like a PayPal network failure (attempt stays unsent or `requires_reconciliation`), so an agent fault can never release a reservation or produce a second charge. The agent is trusted with the credentials: bind it to 127.0.0.1 or a private network. Agent calls appear in `/metrics` as `clawpay_paypal_requests_total{operation="agent:<op>"}` and carry the caller's `X-Request-ID`, so ClawPay and agent logs join on `request_id`.
+
+## Watch / voice assistant
+
+`POST /api/v1/assistant/messages` runs the agent loop on the server for clients that only have a microphone (Apple Watch, Siri Shortcut, Wear OS). The client transcribes speech itself and sends `{"text": "buy two milk", "reset": false}` with the claw's `cpd_` token. The server calls the pinned LLM through the proxy service (same per-device rate limit and daily token budget) and executes the same four MCP tools in-process, so validation and conversation events are unchanged. The response is `{"reply", "order", "approval_required"}`; the client speaks `reply`.
+
+The watch's Talk button records audio and transcribes it with Fish Audio. After a short pause, it sends the transcript directly to the agent; Stop & send also ends the recording. It also supports App Shortcuts: **“Hey Siri, ask ClawPay.”**
+Siri captures the request, opens the app, and hands it to the same authenticated
+assistant path. DeepSeek handles text reasoning/tool calls; Apple supplies Siri's STT.
+Replies aim for 8–16 words and only the latest answer is shown by default.
+`order` also carries verified `get_order_status` results, so a status query can
+refresh the watch's payment receipt without inferring state from model prose.
+See the [watch Siri setup](watch/README.md#siri-and-speech-to-text).
+
+- It cannot pay. A created order belongs to the token's device and waits for that device's signature: with the claw's token, the claw's button hold (its approval task must long-poll `GET /api/v1/devices/{id}/pending-approvals` to see orders that did not come from its own LLM); with a watch registered as its own device (`scripts/register_watch.py`), the watch's Secure Enclave key. Send `"approver": "watch"` so the reply says to approve on the watch.
+- History is kept per device in memory for 15 minutes (last 24 messages); `reset: true` clears it. One worker, like the other limits.
+- Each message makes up to 5 LLM calls; LLM proxy settings must be configured or it returns `503 proxy_not_configured`.
+- `POST /api/v1/assistant/speech` turns reply text (≤500 chars) into MP3 with [Fish Audio](https://docs.fish.audio) (`POST https://api.fish.audio/v1/tts`). Set `FISH_AUDIO_API_KEY`, optionally `FISH_AUDIO_VOICE_ID` (a voice's `reference_id`) and `FISH_AUDIO_MODEL` (default `s2.1-pro`; `s2.1-pro-free` on the free tier). The key stays on the server, text is never logged, and requests are limited per device (`FISH_AUDIO_REQUESTS_PER_MINUTE`). Any Fish Audio failure is `502 tts_unavailable`; the watch then speaks with its built-in voice.
+- A watchOS client is in [watch/](watch/README.md).
 
 ## Channel3 merchant agent
 
@@ -200,7 +224,13 @@ See `.env.example` for defaults and explanations. Money uses integer minor units
 - Sandbox only. MYR between Malaysian accounts, vault-without-purchase, merchant-initiated charges, payer email presence, Request-Id retention, duplicate-invoice enforcement and REVERSED resource shapes remain unverified live. Do not raise the replay window above 900 seconds until retention and invoice blocking are confirmed.
 - Rate limits, LLM budgets and reconciliation throttle reset on process restart and are per worker. Budget checks account for completed requests; concurrent requests can briefly exceed a budget.
 - Exhausted payment attempts keep reservations until a verified webhook or manual provider-side resolution; no manual-resolution API exists.
-- Firmware bearer patch and private `cap_clawpay` signing task, actual hardware/tunnel tests, and the dashboard frontend remain separate work. No external AP2 SDK is claimed: the stored gadget-cart mandate binds the verified cart signature.
+- Firmware bearer patch and private `cap_clawpay` signing task, actual hardware/tunnel tests remain separate work. No external AP2 SDK is claimed: the stored gadget-cart mandate binds the verified cart signature.
 - Phone approval, voice, AgentCore, AG Grid, Bryntum and Render are out of scope. Hosting is plain uvicorn.
 - Channel3 orders are charged to the ClawPay PayPal Sandbox merchant; ClawPay does not place the order with the offer's retailer (no fulfilment). Live Channel3 behaviour (MYR offers, response shape) is unverified; tests mock the API.
 - New SQL and pgTAP were reviewed/static-tested, not run against a database in this task.
+
+## Agent activity dashboard
+
+Run `cd dashboard`, `npm ci`, `npm run build`, then `npm start`; open http://127.0.0.1:8787. Demo mode is immediately available. Owner sign-in connects RLS-scoped live activity from the Python backend. See [dashboard/README.md](dashboard/README.md) for environment settings, development and verification.
+
+The watch now shows structured product choices, an itemized Sandbox receipt and explicitly simulated delivery. Choose a fictional destination before approval, then use Simulate next step after paid status. Channel3 public checkout is coming soon; no retailer order is placed. See [watch receipt/demo setup](watch/README.md#product-selection-receipts-and-delivery-demo).
