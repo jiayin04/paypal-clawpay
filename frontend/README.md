@@ -7,7 +7,7 @@ Vite + React + TypeScript SPA with a read-only Hono API proxy. Includes a respon
 Use Node 24+ and start the existing Python backend on port 8000.
 
 ```sh
-cd dashboard
+cd frontend
 npm ci
 npm run build
 npm start
@@ -17,7 +17,7 @@ Open http://127.0.0.1:8787. The production Hono server serves the Vite assets an
 
 For frontend development, run `npm run dev` and `npm run dev:web` in separate terminals, then open http://127.0.0.1:5173. Vite forwards `/api` to Hono.
 
-The Hono process reads `../.env` with Node's env loader. Reuse `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` (legacy `SUPABASE_ANON_KEY` also accepted). It ignores service-role, PayPal, DeepSeek, watch tokens and signing keys. Optional process env:
+The Hono process reads `../backend/.env` with Node's env loader. Reuse `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` (legacy `SUPABASE_ANON_KEY` also accepted). It ignores service-role, PayPal, DeepSeek, watch tokens and signing keys. Optional process env:
 
 ```text
 CLAWPAY_API_ORIGIN=http://127.0.0.1:8000

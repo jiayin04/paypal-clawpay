@@ -4,8 +4,8 @@
   "title": "Design System: ClawPay dashboard",
   "extensions": {
     "sources": [
-      "dashboard/src/styles.css",
-      "dashboard/src/main.tsx",
+      "frontend/src/styles.css",
+      "frontend/src/main.tsx",
       "PRODUCT.md",
       ".impeccable/briefs/dashboard.md"
     ],

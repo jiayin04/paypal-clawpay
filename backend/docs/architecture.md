@@ -4,6 +4,8 @@ ClawPay uses a small layered backend. Group modules by business responsibility i
 
 ## Repository map
 
+The repository has three parts: `backend/` (this API, documented below), `frontend/` (owner and judge dashboard) and `mobile/watch/` (watchOS client). Run backend commands from `backend/`.
+
 ```text
 backend/
   app/

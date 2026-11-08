@@ -64,7 +64,7 @@ The recorder estimates end of speech using microphone power, with at least two 1
 Run the portable pause/PCM checks with:
 
 ```sh
-swiftc watch/ClawPayWatch/VoiceAudio.swift watch/ClawPayWatch/DemoDelivery.swift watch/Tests/VoiceAudioChecks.swift -o /tmp/clawpay-voice-checks
+swiftc mobile/watch/ClawPayWatch/VoiceAudio.swift mobile/watch/ClawPayWatch/DemoDelivery.swift mobile/watch/Tests/VoiceAudioChecks.swift -o /tmp/clawpay-voice-checks
 /tmp/clawpay-voice-checks
 ```
 
@@ -131,25 +131,25 @@ remains a separate application.
 
 Needs Xcode with the watchOS simulator runtime (`xcodebuild -downloadPlatform watchOS`).
 
-1. Start the demo backend from the repository root. It uses the in-memory store, mock merchants and a keyword stand-in for the LLM, and prints a device token. With `FISH_AUDIO_API_KEY` in `.env` it calls Fish Audio for speech (paid); without it the watch uses its own voice:
+1. Start the demo backend from `backend/`. It uses the in-memory store, mock merchants and a keyword stand-in for the LLM, and prints a device token. With `FISH_AUDIO_API_KEY` in `.env` it calls Fish Audio for speech (paid); without it the watch uses its own voice:
 
    ```bash
    uv run python -m scripts.assistant_demo_server
    ```
 
-2. Open `watch/ClawPayWatch.xcodeproj` in Xcode, choose an Apple Watch simulator and run. In the app, tap the gear and paste the `cpd_` token (the server URL defaults to `http://127.0.0.1:8000`). Tap a suggestion chip, or tap the mic and type with the Mac keyboard, for example `buy two milk`.
+2. Open `mobile/watch/ClawPayWatch.xcodeproj` in Xcode, choose an Apple Watch simulator and run. In the app, tap the gear and paste the `cpd_` token (the server URL defaults to `http://127.0.0.1:8000`). Tap a suggestion chip, or tap the mic and type with the Mac keyboard, for example `buy two milk`.
 
    Or from the command line (no Xcode UI), replacing `<udid>` and `<token>`:
 
    ```bash
-   xcodebuild -project watch/ClawPayWatch.xcodeproj -scheme ClawPayWatch -destination "id=<udid>" -derivedDataPath build/watch CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- build
+   xcodebuild -project mobile/watch/ClawPayWatch.xcodeproj -scheme ClawPayWatch -destination "id=<udid>" -derivedDataPath build/watch CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- build
    xcrun simctl install <udid> build/watch/Build/Products/Debug-watchsimulator/ClawPayWatch.app
    SIMCTL_CHILD_CLAWPAY_TOKEN=<token> SIMCTL_CHILD_CLAWPAY_DEMO_PROMPT="buy two milk" xcrun simctl launch <udid> com.clawpay.watch
    ```
 
    Keep the ad-hoc signing (`CODE_SIGN_IDENTITY=-`): with `CODE_SIGNING_ALLOWED=NO` the app has no Keychain access and cannot create its approver key.
 
-   To approve on the watch, after that first launch: `uv run python -m scripts.register_watch --user-id <uuid> --admin-token <token> --simulator <udid>` (the demo server prints this command with the right values). It relaunches the app with the watch's own token.
+   To approve on the watch, after that first launch: from `backend/`, `uv run python -m scripts.register_watch --user-id <uuid> --admin-token <token> --simulator <udid>` (the demo server prints this command with the right values). It relaunches the app with the watch's own token.
 
    `CLAWPAY_BASE_URL`, `CLAWPAY_TOKEN`, `CLAWPAY_APPROVE_ON_WATCH=1`, `CLAWPAY_DEMO_PROMPT` (sends one message on launch) and `CLAWPAY_DEMO_APPROVE=1` (reviews and confirms a simulator order) are read only when passed through `SIMCTL_CHILD_`.
 
@@ -162,7 +162,7 @@ Point the server URL at the HTTPS tunnel (`PUBLIC_BASE_URL`) and use the claw's 
 ### Simulator with Channel3 and the PayPal agent
 
 This uses the real backend and hosted Supabase, rather than `assistant_demo_server`.
-Put credentials in the repository's private `.env` file:
+Put credentials in the private `backend/.env` file:
 
 ```dotenv
 CHANNEL3_API_KEY=your-channel3-key
@@ -192,7 +192,7 @@ The proxy maps the response limit to DeepSeek's `max_tokens` and defaults to
 non-thinking mode for short voice replies. Both devices can share the server-side
 provider key while retaining their own ClawPay device tokens.
 
-Run these from the repository root in separate terminals, restarting after `.env` changes:
+Run these from `backend/` in separate terminals, restarting after `.env` changes:
 
 ```bash
 uv run uvicorn --factory app.paypal_agent.app:paypal_agent_app --host 127.0.0.1 --port 8201 --no-access-log
@@ -205,7 +205,7 @@ is needed. Ask explicitly for products from Channel3. Keep the first order at or
 below USD 100, then use Review and Confirm & pay on the watch. Simulator approval
 uses a software key. The catalog is real, but retailer fulfilment is not implemented.
 
-Run the combined offline wiring check with:
+Run the combined offline wiring check from `backend/` with:
 
 ```bash
 uv run --offline pytest tests/integration/test_watch_agent_flow.py
