@@ -115,6 +115,7 @@ def make_harness(
     paypal_agent_transport: httpx.AsyncBaseTransport | None = None,
     llm_client: httpx.AsyncClient | None = None,
     tts_client: httpx.AsyncClient | None = None,
+    stt_client: httpx.AsyncClient | None = None,
     raise_server_exceptions: bool = True,
     **settings_overrides: Any,
 ) -> Harness:
@@ -134,6 +135,7 @@ def make_harness(
         paypal_agent_transport=paypal_agent_transport,
         llm_client=llm_client,
         tts_client=tts_client,
+        stt_client=stt_client,
     )
     app = create_app(settings, services=services, start_background=False)
     client = TestClient(app, raise_server_exceptions=raise_server_exceptions)

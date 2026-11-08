@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, StringConstraints
 class AssistantMessageRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    # Already transcribed on the client (watch dictation); audio never reaches the server.
+    # Text from Siri/dictation or the separate authenticated transcription endpoint.
     text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
     # Drop the remembered conversation before handling this message.
     reset: bool = False

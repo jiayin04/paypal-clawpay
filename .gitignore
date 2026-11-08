@@ -33,3 +33,9 @@ build/
 DerivedData/
 xcuserdata/
 *.xcuserstate
+
+# Web dashboard
+node_modules/
+dashboard/dist/
+*.tsbuildinfo
+.impeccable/review/

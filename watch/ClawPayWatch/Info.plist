@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Use your location once to suggest a delivery address. Apple Maps resolves the address, and you confirm before using it. Delivery is simulated.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Record a short request and send it to Fish Audio for speech-to-text.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<!-- Plain HTTP only to localhost / LAN, for the local demo backend. Use the HTTPS tunnel otherwise. -->

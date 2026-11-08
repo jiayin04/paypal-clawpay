@@ -105,3 +105,67 @@ def test_not_configured_auth_validation_and_rate_limit():
     assert speak(h, token, text="hi", voice="other").status_code == 400
     assert fish.requests == []
     assert [speak(h, token, text="hi").status_code for _ in range(3)] == [200, 200, 429]
+
+
+def test_stream_endpoint_uses_low_latency_bounded_pcm_and_owner_device_auth():
+    pcm = b"\0\0" * 4800
+    h, fish, token = setup(FakeFish(content=pcm), device_requests_per_minute=1, fish_audio_requests_per_minute=2)
+    path = "/api/v1/assistant/speech/stream"
+    assert h.client.post(path, json={"text": "hi"}).status_code == 401
+    headers = {"Authorization": f"Bearer {token}"}
+    assert h.client.post(path, json={"text": ""}, headers=headers).status_code == 400
+    response = h.client.post(path, json={"text": "Ready to review."}, headers=headers)
+    assert response.status_code == 200 and response.content == pcm
+    assert response.headers["x-audio-format"] == "pcm-s16le"
+    assert response.headers["x-audio-sample-rate"] == "24000"
+    assert response.headers["x-audio-channels"] == "1"
+    assert response.headers["cache-control"] == "no-store" and response.headers["x-accel-buffering"] == "no"
+    assert json.loads(fish.requests[0].content) == {
+        "text": "Ready to review.", "format": "pcm", "sample_rate": 24000, "latency": "low", "reference_id": "voice-123",
+    }
+    # Both audio routes share a TTS budget, separate from generic device requests.
+    assert speak(h, token, text="hi").status_code == 200
+    assert h.client.post(path, json={"text": "hi"}, headers=headers).status_code == 429
+    h.store.devices[next(iter(h.store.devices))]["status"] = "revoked"
+    assert h.client.post(path, json={"text": "hi"}, headers=headers).status_code == 401
+
+
+@pytest.mark.parametrize("fish", [FakeFish(status=402), FakeFish(content=b""), FakeFish(fail=True),
+                                  FakeFish(content=b"x" * (MAX_AUDIO_BYTES + 1))])
+def test_stream_errors_before_audio_headers_are_json(fish):
+    h, _, token = setup(fish)
+    response = h.client.post("/api/v1/assistant/speech/stream", json={"text": "hi"},
+                             headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 502 and response.json()["error"]["code"] == "tts_unavailable"
+    assert "fish-secret" not in response.text
+
+
+def test_pcm_first_chunk_precedes_provider_completion_and_cancel_closes_upstream():
+    import asyncio
+
+    class SlowAudio(httpx.AsyncByteStream):
+        tail_requested = False
+        closed = False
+
+        async def __aiter__(self):
+            yield b"\0\0" * 2400
+            self.tail_requested = True
+            await asyncio.Event().wait()  # never completes; the first audio must not wait for this
+
+        async def aclose(self):
+            self.closed = True
+
+    async def check():
+        provider = SlowAudio()
+        client = httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(200, stream=provider)))
+        h = make_harness(tts_client=client, **FISH)
+        audio = h.services.tts.audio("device", "Ready to review.", pcm=True)
+        try:
+            first = await asyncio.wait_for(anext(audio), timeout=1)
+            assert len(first) == 4800 and not provider.tail_requested
+            await audio.aclose()
+            assert provider.closed
+        finally:
+            await client.aclose()
+
+    asyncio.run(check())

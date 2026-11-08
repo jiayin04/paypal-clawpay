@@ -51,6 +51,7 @@ _OPTIONAL_FIELDS = (
     "device_token_pepper",
     "llm_proxy_upstream_base_url",
     "llm_proxy_upstream_api_key",
+    "deepseek_api_key",
     "llm_proxy_model",
     "internal_service_token",
     "metrics_token",
@@ -143,6 +144,7 @@ class Settings(BaseSettings):
     # OpenAI-compatible LLM proxy for the device (Phase 4); upstream key stays server-side
     llm_proxy_upstream_base_url: str | None = None
     llm_proxy_upstream_api_key: SecretStr | None = None
+    deepseek_api_key: SecretStr | None = None  # fallback for the direct DeepSeek upstream only
     llm_proxy_model: str | None = None
     llm_proxy_max_tokens: int = Field(1024, ge=1, le=8192)
     llm_proxy_requests_per_minute: int = Field(20, ge=1)
@@ -266,6 +268,9 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _startup_checks(self) -> Settings:
+        if (self.llm_proxy_upstream_api_key is None
+                and urlsplit(self.llm_proxy_upstream_base_url or "").hostname == "api.deepseek.com"):
+            self.llm_proxy_upstream_api_key = self.deepseek_api_key
         if self.paypal_env == "live":
             raise ValueError("PAYPAL_ENV: live PayPal is not supported in this build")
         if self.default_currency not in EXPONENTS:

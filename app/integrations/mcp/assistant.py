@@ -17,12 +17,14 @@ from __future__ import annotations
 import json
 import logging
 from collections import OrderedDict
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
 from starlette.background import BackgroundTasks
 
 from app.core.exceptions import ApiError
+from app.domain.money import EXPONENTS, format_display
 from app.integrations.mcp import tools as mcp_tools
 from app.integrations.mcp.server import McpServer
 from app.services.container import Services
@@ -41,17 +43,23 @@ FALLBACK_REPLY = "Sorry, I couldn't finish that. Please try again."
 
 SYSTEM_PROMPT = (
     "You are ClawPay, a shopping assistant the user talks to through a smartwatch. "
-    "Every reply is read aloud: at most two short sentences, plain text, no markdown or lists. "
-    "Use search_products to find items and say names with prices. Ask before ordering if the "
+    "Every reply is read aloud on a tiny watch: aim for 8-16 words, never more than 24 words. "
+    "Use one short sentence, or two only when needed. Plain text, no markdown, lists, greetings or filler. "
+    "Answer only the current question. For spending, say the amount spent and remaining; omit the cap unless asked. "
+    "Use search_products to find items; mention at most two short product names with prices. Ask before ordering if the "
     "item or quantity is unclear. create_order does not pay: after it succeeds, tell the user "
     "the total and {approve_how} The approval happens outside this chat, so ignore any "
     "next_step that mentions clawpay_request_approval. "
     "Only say a payment succeeded if get_order_status returns status paid. "
+    "These are PayPal Sandbox demo orders with simulated delivery, not real retailer purchases. "
+    "When the user says yes, create the cart only if one specific product was selected or offered. "
+    "If more than one product is still a possible choice, ask which one. Use its exact returned SKU. "
+    "Person-to-person transfers and retailer fulfilment are not available; never claim to perform them. "
     "If a tool returns an error, tell the user its message."
 )
 APPROVE_HOW = {
     "device": "to approve it by holding the button on their ClawPay device.",
-    "watch": "to approve it with the Approve button on their watch.",
+    "watch": "to review and confirm it on their watch.",
 }
 
 
@@ -122,6 +130,7 @@ class Assistant:
         *,
         reset: bool = False,
         approver: str = "device",
+        progress: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> dict[str, Any]:
         services = self._services
         if reset:
@@ -131,10 +140,16 @@ class Assistant:
         tools = openai_tools(services.settings.merchant_codes)
         order: dict[str, Any] | None = None
         reply: str | None = None
+        products: list[dict[str, Any]] = []
         rpc_id = 0
         system = SYSTEM_PROMPT.format(approve_how=APPROVE_HOW[approver])
 
+        async def notify(stage: str, message: str, status: str = "working") -> None:
+            if progress:
+                await progress({"type": "progress", "stage": stage, "message": message, "status": status})
+
         for _ in range(MAX_STEPS):
+            await notify("assistant", "Understanding your request…" if rpc_id == 0 else "Preparing your answer…")
             prompt = [{"role": "system", "content": system}, *history, *turn]
             try:
                 message = await self._complete(device.device_id, prompt, tools)
@@ -150,15 +165,61 @@ class Assistant:
                 content = message.get("content")
                 reply = content.strip() if isinstance(content, str) and content.strip() else None
                 break
-            results = [await self._run_tool(call, rpc_id + i + 1, device, background) for i, call in enumerate(calls)]
+            results = []
+            for i, call in enumerate(calls):
+                name = call.get("function", {}).get("name") if isinstance(call, dict) and isinstance(call.get("function"), dict) else "unknown"
+                label = {
+                    "search_products": "Searching merchant catalogs…",
+                    "create_order": "Checking the live quote and spending limits…",
+                    "get_order_status": "Checking the payment record…",
+                    "get_spending_summary": "Checking today's spending…",
+                }.get(name, "Checking the requested action…")
+                if name == "search_products":
+                    try:
+                        args = json.loads(call["function"].get("arguments", "{}"))
+                        if isinstance(args, dict) and args.get("merchant_id") == "channel3":
+                            label = "Searching Channel3…"
+                    except (ValueError, TypeError, RecursionError):
+                        pass
+                await notify(name, label)
+                result = await self._run_tool(call, rpc_id + i + 1, device, background)
+                results.append(result)
+                if result.payload is None:
+                    await notify(name, "The action could not be completed.", "failed")
+                elif name == "search_products":
+                    products = result.payload.get("results", [])[:5]
+                    await notify(name, f"Found {len(products)} products with current prices.", "complete")
+                elif name == "create_order":
+                    await notify(name, "Quote validated. Cart is ready for your approval.", "complete")
+                else:
+                    await notify(name, "Verified the latest account record.", "complete")
             rpc_id += len(calls)
             # Rebuilt from what was executed, so every tool reply has a matching, well-formed call.
             turn.append({"role": "assistant", "content": message.get("content"),
                          "tool_calls": [r.call for r in results]})
             for r in results:
                 turn.append({"role": "tool", "tool_call_id": r.call["id"], "content": r.text})
-                if r.call["function"]["name"] == "create_order" and r.payload and isinstance(r.payload.get("order_id"), str):
-                    order = {k: r.payload.get(k) for k in ("order_id", "status", "total", "merchant", "expires_at")}
+                if r.call["function"]["name"] in ("create_order", "get_order_status") and r.payload and isinstance(r.payload.get("order_id"), str):
+                    order = {k: r.payload.get(k) for k in ("order_id", "status", "total", "merchant", "expires_at", "items", "currency", "paid_at")}
+
+            # The validated quote already gives us the next action. Avoid another LLM
+            # round trip just to restate the amount, and never let prose authorize payment.
+            if (len(results) == 1 and results[0].call["function"]["name"] == "create_order"
+                    and order and order.get("status") == "awaiting_device_approval"
+                    and isinstance(order.get("total"), str)):
+                action = "Review and confirm on your watch." if approver == "watch" else "Hold your device button to approve."
+                reply = f"{order['total']}. {action}"
+                break
+            if len(results) == 1 and results[0].payload:
+                name, payload = results[0].call["function"]["name"], results[0].payload
+                if name == "get_spending_summary":
+                    spent, currency = payload.get("committed_minor"), payload.get("currency")
+                    if type(spent) is int and spent >= 0 and isinstance(currency, str) and currency in EXPONENTS and isinstance(payload.get("remaining"), str):
+                        reply = f"Spent {format_display(spent, currency)} today. {payload['remaining']} available."
+                        break
+                if name == "get_order_status" and order and order.get("status") == "paid" and isinstance(order.get("total"), str):
+                    reply = f"Paid {order['total']}."
+                    break
 
         reply = reply or FALLBACK_REPLY
         turn.append({"role": "assistant", "content": reply})
@@ -167,13 +228,14 @@ class Assistant:
             "reply": reply,
             "order": order,
             "approval_required": bool(order and order.get("status") == "awaiting_device_approval"),
+            "products": products,
         }
 
     async def _complete(
         self, device_id: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]]
     ) -> dict[str, Any]:
         """One non-streaming upstream call through the proxy service (limits and budget apply)."""
-        body = {"messages": messages, "tools": tools, "tool_choice": "auto", "max_tokens": MAX_REPLY_TOKENS}
+        body = {"messages": messages, "tools": tools, "tool_choice": "auto", "max_completion_tokens": MAX_REPLY_TOKENS}
         try:
             response = await self._services.llm.complete(device_id, body)
         except ApiError as exc:

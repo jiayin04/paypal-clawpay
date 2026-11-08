@@ -97,13 +97,16 @@ enum DeviceToken {
         if let data = Keychain.read(account: account), let token = String(data: data, encoding: .utf8) { return token }
         // One-time move from the earlier @AppStorage("deviceToken") location.
         let legacy = UserDefaults.standard.string(forKey: "deviceToken") ?? ""
-        if !legacy.isEmpty { save(legacy) }
-        UserDefaults.standard.removeObject(forKey: "deviceToken")
+        if !legacy.isEmpty {
+            do { try save(legacy) }
+            catch { /* Keep the original token until migration succeeds. */ }
+        }
         return legacy
     }
 
-    static func save(_ token: String) {
-        try? Keychain.write(Data(token.utf8), account: account)
+    static func save(_ token: String) throws {
+        try Keychain.write(Data(token.utf8), account: account)
+        UserDefaults.standard.removeObject(forKey: "deviceToken")
     }
 }
 
@@ -121,11 +124,20 @@ enum Keychain {
     static func write(_ data: Data, account: String) throws {
         let match: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
                                     kSecAttrAccount as String: account]
-        SecItemDelete(match as CFDictionary)
+        // Update in place so a failed write cannot delete the last saved value.
+        let attributes: [String: Any] = [kSecValueData as String: data]
+        let updated = SecItemUpdate(match as CFDictionary, attributes as CFDictionary)
+        if updated == errSecSuccess { return }
+        guard updated == errSecItemNotFound else { throw ApprovalError("Keychain error \(updated).") }
         var item = match
         item[kSecValueData as String] = data
         item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         let status = SecItemAdd(item as CFDictionary, nil)
         guard status == errSecSuccess else { throw ApprovalError("Keychain error \(status).") }
+    }
+
+    static func remove(account: String) {
+        SecItemDelete([kSecClass as String: kSecClassGenericPassword,
+                       kSecAttrService as String: service, kSecAttrAccount as String: account] as CFDictionary)
     }
 }

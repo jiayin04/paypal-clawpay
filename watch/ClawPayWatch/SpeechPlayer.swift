@@ -1,22 +1,20 @@
 import AVFoundation
 import Observation
 
-/// Speaks assistant replies: Fish Audio MP3 from the backend when available,
-/// otherwise the watch's built-in voice, so a reply is always heard.
+/// Plays authenticated Fish PCM as it arrives, with a local voice fallback.
 @MainActor
 @Observable
-final class SpeechPlayer: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegate {
+final class SpeechPlayer: NSObject, AVSpeechSynthesizerDelegate {
     enum Voice: String { case fishAudio = "Fish Audio", builtIn = "Built-in" }
-
     private(set) var isSpeaking = false
     private(set) var lastVoice: Voice?
-
-    // Bumped by every speak()/stop(); work and callbacks from an older generation are ignored,
-    // so a slow Fish Audio download or a late cancel callback never touches newer speech.
     @ObservationIgnored private var generation = 0
-    @ObservationIgnored private var player: AVAudioPlayer?
+    @ObservationIgnored private var speechTask: Task<Void, Never>?
+    @ObservationIgnored private var engine: AVAudioEngine?
+    @ObservationIgnored private var node: AVAudioPlayerNode?
+    @ObservationIgnored private var queuedBuffers = 0
+    @ObservationIgnored private var inputFinished = false
     @ObservationIgnored private var utterance: AVSpeechUtterance?
-    @ObservationIgnored private var playerText: String?  // spoken instead if the MP3 fails to decode
     @ObservationIgnored private let synthesizer = AVSpeechSynthesizer()
 
     override init() {
@@ -28,74 +26,133 @@ final class SpeechPlayer: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDe
         stop()
         let current = generation
         isSpeaking = true
-        if useFishAudio, let client, let audio = try? await client.speech(text) {
-            guard current == generation else { return }  // stopped or replaced while downloading
-            if play(audio, text: text) {
-                lastVoice = .fishAudio
-                return
+        let next = Task { @MainActor in
+            if useFishAudio, let client {
+                do {
+                    var decoder = PCMStreamBuffer()
+                    var initialAudio = Data()
+                    var started = false
+                    try await client.streamSpeech(text) { chunk in
+                        guard current == self.generation, !Task.isCancelled else { throw CancellationError() }
+                        if !started {
+                            initialAudio.append(chunk)
+                            guard initialAudio.count >= 9600 else { return } // 200 ms prebuffer to reduce underruns
+                            try self.enqueue(decoder.decode(initialAudio), generation: current)
+                            initialAudio.removeAll()
+                            started = true
+                        } else {
+                            try self.enqueue(decoder.decode(chunk), generation: current)
+                        }
+                    }
+                    guard current == self.generation, !Task.isCancelled else { return }
+                    if !initialAudio.isEmpty { try self.enqueue(decoder.decode(initialAudio), generation: current) }
+                    try decoder.finish()
+                    self.inputFinished = true
+                    self.finishStreamIfDrained()
+                    self.speechTask = nil
+                    return
+                } catch {
+                    guard current == self.generation, !Task.isCancelled else { return }
+                    self.stopAudio()
+                }
             }
+            guard current == self.generation, !Task.isCancelled else { return }
+            self.speakBuiltIn(text)
+            self.speechTask = nil
         }
-        guard current == generation else { return }
-        speakBuiltIn(text)
+        speechTask = next
+        await next.value
     }
 
     func stop() {
         generation += 1
-        player?.stop()
-        player = nil
+        speechTask?.cancel()
+        speechTask = nil
+        stopAudio()
         utterance = nil
         synthesizer.stopSpeaking(at: .immediate)
         isSpeaking = false
     }
 
+    private func enqueue(_ samples: [Float], generation current: Int) throws {
+        guard !samples.isEmpty else { return }
+        let format = AVAudioFormat(standardFormatWithSampleRate: PCMStreamBuffer.sampleRate, channels: 1)!
+        if engine == nil {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .spokenAudio)
+            try session.setActive(true)
+            let engine = AVAudioEngine()
+            let node = AVAudioPlayerNode()
+            engine.attach(node)
+            engine.connect(node, to: engine.mainMixerNode, format: format)
+            self.engine = engine
+            self.node = node
+            try engine.start()
+            #if DEBUG && targetEnvironment(simulator)
+            NSLog("ClawPay streaming playback started")
+            #endif
+        }
+        guard let node, let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count)),
+              let channel = buffer.floatChannelData?[0] else { throw VoiceAudioError.invalidStream }
+        buffer.frameLength = AVAudioFrameCount(samples.count)
+        for (index, sample) in samples.enumerated() { channel[index] = sample }
+        queuedBuffers += 1
+        let nodeID = ObjectIdentifier(node)
+        node.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { _ in
+            Task { @MainActor in
+                guard current == self.generation, let activeNode = self.node,
+                      nodeID == ObjectIdentifier(activeNode) else { return }
+                self.queuedBuffers -= 1
+                self.finishStreamIfDrained()
+            }
+        }
+        if !node.isPlaying { node.play() }
+        lastVoice = .fishAudio
+    }
+
+    private func finishStreamIfDrained() {
+        guard inputFinished, queuedBuffers == 0 else { return }
+        stopAudio()
+        isSpeaking = false
+        #if DEBUG && targetEnvironment(simulator)
+        NSLog("ClawPay streaming playback finished")
+        #endif
+    }
+
+    private func stopAudio() {
+        node?.stop()
+        node = nil
+        engine?.stop()
+        engine = nil
+        queuedBuffers = 0
+        inputFinished = false
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
     private func speakBuiltIn(_ text: String) {
+        #if DEBUG && targetEnvironment(simulator)
+        NSLog("ClawPay built-in speech fallback")
+        #endif
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
+        try? AVAudioSession.sharedInstance().setActive(true)
         lastVoice = .builtIn
         let next = AVSpeechUtterance(string: text)
         utterance = next
         synthesizer.speak(next)
     }
 
-    private func play(_ audio: Data, text: String) -> Bool {
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
-        try? AVAudioSession.sharedInstance().setActive(true)
-        guard let next = try? AVAudioPlayer(data: audio) else { return false }
-        next.delegate = self
-        player = next
-        playerText = text
-        if next.play() { return true }
-        player = nil
-        return false
-    }
-
-    private func finished(player finishedPlayer: AVAudioPlayer) {
-        guard finishedPlayer === player else { return }
-        player = nil
-        isSpeaking = false
-    }
-
-    private func finished(utterance finishedUtterance: AVSpeechUtterance) {
+    private func finished(_ finishedUtterance: AVSpeechUtterance) {
         guard finishedUtterance === utterance else { return }
         utterance = nil
         isSpeaking = false
-    }
-
-    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        Task { @MainActor in self.finished(player: player) }
-    }
-
-    nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
-        Task { @MainActor in
-            guard player === self.player, let text = self.playerText else { return }
-            self.player = nil
-            self.speakBuiltIn(text)  // corrupt MP3: say it with the built-in voice instead
-        }
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        Task { @MainActor in self.finished(utterance: utterance) }
+        Task { @MainActor in self.finished(utterance) }
     }
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
-        Task { @MainActor in self.finished(utterance: utterance) }
+        Task { @MainActor in self.finished(utterance) }
     }
 }

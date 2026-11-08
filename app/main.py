@@ -102,6 +102,7 @@ def create_app(
                 logger.info("Background reconciler stopped")
             await services.llm.client.aclose()
             await services.tts.client.aclose()
+            await services.stt.client.aclose()
 
     is_production = settings.app_env == "production"
     app = FastAPI(

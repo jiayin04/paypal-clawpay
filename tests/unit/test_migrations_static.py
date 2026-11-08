@@ -22,7 +22,9 @@ def _new_migrations() -> list[Path]:
 
 
 def test_initial_migration_unchanged() -> None:
-    digest = hashlib.sha256((MIGRATIONS / INITIAL).read_bytes()).hexdigest()
+    # The historical digest used CRLF. Guard identical SQL on either checkout format.
+    sql = (MIGRATIONS / INITIAL).read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+    digest = hashlib.sha256(sql).hexdigest()
     assert digest == INITIAL_SHA256
 
 

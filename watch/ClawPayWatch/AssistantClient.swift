@@ -2,16 +2,37 @@ import Foundation
 
 /// Response of `POST /api/v1/assistant/messages`.
 struct AssistantReply: Decodable {
+    struct Item: Decodable, Equatable {
+        let name: String
+        let qty: Int
+        let lineTotal: String
+    }
+    struct Product: Decodable, Identifiable {
+        var id: String { merchantId + ":" + sku }
+        let sku: String
+        let name: String
+        let merchantId: String
+        let price: String
+    }
     struct Order: Decodable {
         let orderId: String
         let status: String?
         let total: String?
         let merchant: String?
+        let items: [Item]?
+        let paidAt: String?
     }
 
     let reply: String
     let order: Order?
     let approvalRequired: Bool
+    let products: [Product]?
+}
+
+struct AgentProgress: Decodable, Equatable {
+    let stage: String
+    let message: String
+    let status: String
 }
 
 struct AssistantError: LocalizedError {
@@ -50,6 +71,20 @@ struct PreparedApproval: Equatable {
     fileprivate let keyVersion: Int
 }
 
+#if DEBUG && targetEnvironment(simulator)
+extension PreparedApproval {
+    /// Offline appearance fixture; the review screen disables interaction.
+    static var visualReview: PreparedApproval {
+        let payload = CanonicalApproval(amountMinor: 2600, currency: "USD", deviceId: "visual-review-only",
+                                        expiresAt: Int(Date().timeIntervalSince1970) + 120,
+                                        merchantName: "Channel3 Marketplace", orderId: "visual-review-only",
+                                        purpose: "clawpay.order_approval.v1")
+        return PreparedApproval(payload: payload, bytes: Data(), challengeId: "visual-review-only",
+                                nonce: "visual-review-only", keyVersion: 1)
+    }
+}
+#endif
+
 struct ApprovalResult: Decodable {
     let status: String  // paid | payment_pending | payment_failed | denied
     let message: String
@@ -57,7 +92,7 @@ struct ApprovalResult: Decodable {
 
 /// Talks to the ClawPay backend with a `cpd_` device token: the claw's (approve with its
 /// button) or the watch's own (registered with its approver key; approve on the watch).
-struct AssistantClient {
+struct AssistantClient: Equatable {
     let baseURL: URL
     let token: String
 
@@ -73,6 +108,59 @@ struct AssistantClient {
         let data = try await request("POST", "api/v1/assistant/messages",
                                      ["text": text, "reset": reset, "approver": approver], timeout: 60)
         return try Self.decoder.decode(AssistantReply.self, from: data)
+    }
+
+    /// Action summaries come from executed backend stages, not private model reasoning.
+    func sendStreaming(_ text: String, reset: Bool, approver: String,
+                       onProgress: @MainActor (AgentProgress) -> Void) async throws -> AssistantReply {
+        var request = URLRequest(url: baseURL.appending(path: "api/v1/assistant/messages/stream"))
+        request.httpMethod = "POST"
+        request.timeoutInterval = 60
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["text": text, "reset": reset, "approver": approver])
+        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+              http.value(forHTTPHeaderField: "Content-Type")?.contains("application/x-ndjson") == true else {
+            throw AssistantError(errorDescription: "Couldn't connect to the agent. Check your connection.")
+        }
+        struct Event: Decodable {
+            let type: String
+            let stage: String?
+            let message: String?
+            let status: String?
+            let data: AssistantReply?
+            struct Failure: Decodable { let code: String; let message: String }
+            let error: Failure?
+        }
+        var line = Data()
+        var total = 0
+        for try await byte in bytes {
+            try Task.checkCancellation()
+            total += 1
+            guard total <= 256 * 1024, line.count <= 64 * 1024 else {
+                throw AssistantError(errorDescription: "Agent response was too large. Check your current order.")
+            }
+            if byte == 10 {
+                if line.isEmpty { continue }
+                let event = try Self.decoder.decode(Event.self, from: line)
+                line.removeAll(keepingCapacity: true)
+                if event.type == "progress", let stage = event.stage, let message = event.message, let status = event.status {
+                    await onProgress(AgentProgress(stage: stage, message: message, status: status))
+                } else if event.type == "result", let reply = event.data {
+                    return reply
+                } else if event.type == "error", let error = event.error {
+                    throw AssistantError(errorDescription: error.message, code: error.code)
+                }
+            } else { line.append(byte) }
+        }
+        // Never retry an interrupted mutation automatically; it may have created a cart.
+        throw AssistantError(errorDescription: "Connection interrupted. Check your current order before retrying.")
+    }
+
+    func receipt(orderID: String) async throws -> AssistantReply.Order {
+        let data = try await request("GET", "api/v1/orders/\(orderID)/receipt", nil, timeout: 25)
+        return try Self.decoder.decode(AssistantReply.Order.self, from: data)
     }
 
     /// Step 1: fetch the order's challenge and check it is the order on screen, still valid
@@ -128,6 +216,44 @@ struct AssistantClient {
         try await request("POST", "api/v1/assistant/speech", ["text": text], timeout: 25)
     }
 
+    /// Authenticated PCM chunks, delivered before the full utterance has been generated.
+    func streamSpeech(_ text: String, onChunk: @MainActor (Data) throws -> Void) async throws {
+        var request = URLRequest(url: baseURL.appending(path: "api/v1/assistant/speech/stream"))
+        request.httpMethod = "POST"
+        request.timeoutInterval = 8
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["text": text])
+        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+              http.value(forHTTPHeaderField: "X-Audio-Format") == "pcm-s16le",
+              http.value(forHTTPHeaderField: "X-Audio-Sample-Rate") == "24000",
+              http.value(forHTTPHeaderField: "X-Audio-Channels") == "1" else {
+            throw VoiceAudioError.invalidStream
+        }
+        var chunk = Data()
+        var count = 0
+        for try await byte in bytes {
+            try Task.checkCancellation()
+            count += 1
+            guard count <= PCMStreamBuffer.maxBytes else { throw VoiceAudioError.invalidStream }
+            chunk.append(byte)
+            if chunk.count >= 4800 {  // 100 ms of mono audio
+                try await onChunk(chunk)
+                chunk.removeAll(keepingCapacity: true)
+            }
+        }
+        guard count > 0, count.isMultiple(of: 2) else { throw VoiceAudioError.invalidStream }
+        if !chunk.isEmpty { try await onChunk(chunk) }
+    }
+
+    /// Raw microphone audio goes only to the transcription endpoint, never directly to the agent.
+    func transcribe(_ wav: Data) async throws -> String {
+        let data = try await request("POST", "api/v1/assistant/transcriptions", nil, timeout: 45, wav: wav)
+        struct Transcript: Decodable { let text: String }
+        return try JSONDecoder().decode(Transcript.self, from: data).text
+    }
+
     private static let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
@@ -135,12 +261,15 @@ struct AssistantClient {
     }()
 
     private func request(_ method: String, _ path: String, _ body: [String: Any]?,
-                         timeout: TimeInterval) async throws -> Data {
+                         timeout: TimeInterval, wav: Data? = nil) async throws -> Data {
         var request = URLRequest(url: baseURL.appending(path: path))
         request.httpMethod = method
         request.timeoutInterval = timeout
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        if let body {
+        if let wav {
+            request.setValue("audio/wav", forHTTPHeaderField: "Content-Type")
+            request.httpBody = wav
+        } else if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         }
