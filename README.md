@@ -1,6 +1,6 @@
 # ClawPay
 
-[Website](https://clawpay-dashboard.charleshor0311.workers.dev/)
+[Website](https://clawpay.pages.dev/)
 
 ClawPay is a watch-first hackathon prototype for agent-assisted shopping and PayPal Sandbox payments. A user speaks to the watch or ESP-Claw device, the backend agent builds an order from merchant agents, and payment happens only after a signed approval on the device.
 

@@ -1,0 +1,7 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "clawpay",
+  "pages_build_output_dir": "../dist-pages",
+  "compatibility_date": "2026-11-12",
+  "compatibility_flags": ["nodejs_compat"]
+}
