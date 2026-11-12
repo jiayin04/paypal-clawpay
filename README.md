@@ -66,20 +66,71 @@ These replays use sample data and do not execute payments. For the Watch-to-PayP
 ## How a transaction works
 
 ```mermaid
-flowchart LR
-    W[Watch voice request] --> A[ClawPay assistant]
-    A --> M[Merchant agent / Channel3]
-    M --> Q[Validated quote + policy checks]
-    Q --> H[Watch reviews and signs]
-    H --> P[PayPal agent]
-    P --> S[PayPal Sandbox]
-    S --> R[Status + reconciliation]
-    Q --> D[(Supabase)]
-    R --> D
-    D --> O[Owner dashboard]
+sequenceDiagram
+    autonumber
+    actor U as Owner
+    participant W as Apple Watch
+    participant B as ClawPay backend
+    participant L as LLM (via proxy)
+    participant M as Merchant agent<br/>(mock or Channel3)
+    participant DB as Supabase
+    participant P as PayPal agent
+    participant S as PayPal Sandbox
+
+    Note over U,S: 1 · Request and quote: the agent can prepare an order, never pay
+    U->>W: "Buy two milk"
+    W->>B: Transcript (device token)
+    B->>L: Assistant loop with read/build tools only
+    L-->>B: create_order(merchant, items)
+    B->>DB: Check agent passport (shop, expiry)
+    B->>M: A2A quote request
+    M-->>B: Quote (treated as untrusted)
+    B->>B: Recompute totals, check phone threshold,<br/>daily cap and passport limit
+    alt Any check fails
+        B->>DB: Signed "refused" passport receipt
+        B-->>W: Plain-language refusal, no order created
+    else All checks pass
+        B->>DB: Order AWAITING_APPROVAL + signed "allowed" receipt
+        B-->>W: Cart and total to review
+    end
+
+    Note over U,S: 2 · Approval of this exact cart
+    U->>W: Review, then Confirm and pay
+    W->>B: GET approval challenge
+    B-->>W: Canonical bytes: amount, cart hash, merchant, nonce, expiry
+    W->>W: Sign with P-256 key (Secure Enclave on a real Watch)
+    W->>B: POST signature
+    B->>B: Verify signature over the stored bytes
+    B->>DB: One transaction: consume challenge, reserve daily spending,<br/>record mandate and payment attempt
+
+    Note over U,S: 3 · Payment and outcome
+    B->>P: A2A payment instruction (fixed request id)
+    P->>S: Create order with the vaulted wallet
+    S-->>P: Result
+    P-->>B: PayPal's own result
+    alt Completed
+        B->>DB: Order PAID, spending committed
+    else Declined
+        B->>DB: Order PAYMENT_FAILED, reservation released
+    else Timeout or unknown
+        B->>DB: Keep reservation, order pending
+        loop Reconciler and webhooks
+            B->>P: Check the same PayPal order (never a second charge)
+        end
+    end
+    B-->>W: Status and receipt
+    Note over DB: The read-only dashboard shows orders, timeline,<br/>spending and passport receipts
 ```
 
-The backend validates quotes and configured spending limits, checks any applicable passport, and verifies device approval before payment. On a physical Watch, approval uses a P-256 Secure Enclave key with device presence checks; the simulator uses a software key. Payment results come from provider responses and reconciliation rather than model prose.
+| Safeguard | Enforced by | Why the agent cannot bypass it |
+| --- | --- | --- |
+| Agent passport (shop, per-order cap, expiry) | Backend, before the merchant is called | The LLM never sees or edits the passport; it only gets a refusal |
+| Prices and totals | Backend recomputation of the merchant quote | Prices are not tool arguments; tampered quotes are rejected |
+| Approval of the exact cart | Device signature over server-built bytes | The signing key never leaves the device, and there is no "pay" tool |
+| Daily spending cap | Locked database reservation at approval | Checked in the same transaction that consumes the approval |
+| No double charge | One attempt per order, fixed PayPal request id, reconciliation | Retries and timeouts poll the same PayPal order instead of paying again |
+
+The ESP-Claw device follows the same path, with a button hold instead of the Watch's Confirm and pay. On a physical Watch, approval uses a P-256 Secure Enclave key with device presence checks; the simulator uses a software key. Without a PayPal agent, the backend calls PayPal Sandbox directly with the same rules. Passport receipts are written only for devices that have a passport. Payment results come from provider responses and reconciliation, never from model prose.
 
 ### Current integration scope
 
