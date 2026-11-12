@@ -43,12 +43,24 @@ def test_tests_do_not_require_ignored_agent_notes_or_parent_docs():
 
 
 def test_documentation_relative_links_resolve_inside_repository():
-    for path in [ROOT / "README.md", *(ROOT / "docs").glob("*.md")]:
+    repository = ROOT.parent
+    documents = [
+        repository / "README.md",
+        *(repository / "docs").rglob("*.md"),
+        ROOT / "README.md",
+        *(ROOT / "docs").rglob("*.md"),
+        repository / "frontend/README.md",
+        repository / "mobile/watch/README.md",
+        repository / "deploy/README.md",
+    ]
+    for path in documents:
         text = path.read_text(encoding="utf-8")
-        for target in re.findall(r"(?<!!)\[[^\]]+\]\(([^)]+)\)", text):
+        targets = re.findall(r"\[[^\]]+\]\(([^)]+)\)", text)
+        targets += re.findall(r'<img\b[^>]*\bsrc="([^"]+)"', text)
+        for target in targets:
             target = target.strip("<>").split("#", 1)[0]
             if not target or "://" in target or target.startswith(("mailto:", "#")):
                 continue
             resolved = (path.parent / unquote(target)).resolve()
-            assert resolved.is_relative_to(ROOT), (path, target)
+            assert resolved.is_relative_to(repository), (path, target)
             assert resolved.exists(), (path, target)

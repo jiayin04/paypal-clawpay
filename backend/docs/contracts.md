@@ -168,7 +168,7 @@ Behavior:
 
 - Prices come from the merchant agent quote, revalidated and re-totalled server-side; a quote whose stated line totals, subtotal or total differ from the recomputed values is rejected (`quote_invalid`), never "fixed". LLM-supplied prices do not exist in the schema (`invalid_arguments`).
 - Duplicate skus are merged by summing `qty`; a merged `qty` > 20 → `invalid_arguments`.
-- Ends in DB state `AWAITING_APPROVAL` via `CREATED → QUOTED → AWAITING_APPROVAL` in one database transaction. No PayPal order is created here (see [implementation-plan.md](implementation-plan.md#11-paypal-integration) on vaulted orders).
+- Ends in DB state `AWAITING_APPROVAL` via `CREATED → QUOTED → AWAITING_APPROVAL` in one database transaction. No PayPal order is created here (see [implementation-plan.md](archive/implementation-plan.md#11-paypal-integration) on vaulted orders).
 - `expires_at` = `min(merchant quote expiry, now + QUOTE_TTL_SECONDS)` (default 300 s).
 - The order is bound to the token's device and user.
 - Each call creates a new order, **except** an identical cart (same merchant, skus, quantities and prices) from the same device within 60 s while the first order is still awaiting approval and unexpired: that returns the first order (device retries after a timeout). An unapproved order expires with its quote and never charges.

@@ -1,10 +1,10 @@
 # ClawPay Middleware
 
-Implemented backend for phases 0–4: ESP-Claw calls four stateless MCP tools, deterministic A2A merchants supply validated quotes, a device P-256 signature authorizes payment, and the backend handles PayPal Sandbox execution, spending reservations and reconciliation. Includes verified webhooks, an OpenAI-compatible LLM proxy, and user-scoped dashboard APIs. Includes a responsive Vite + React dashboard with a Hono read-only proxy; see `frontend/README.md`.
+Implemented backend for phases 0–4: ESP-Claw calls four stateless MCP tools, deterministic A2A merchants supply validated quotes, a device P-256 signature authorizes payment, and the backend handles PayPal Sandbox execution, spending reservations and reconciliation. Includes verified webhooks, an OpenAI-compatible LLM proxy, and user-scoped dashboard APIs. Includes a responsive Vite + React dashboard with a Hono read-only proxy; see the [frontend guide](../frontend/README.md).
 
 - [Backend + ESP-Claw setup](docs/setup.md)
 - [Integration contracts](docs/contracts.md)
-- [Decisions and phase status](docs/implementation-plan.md#19-decisions-log)
+- [Decisions and phase status](docs/archive/implementation-plan.md#19-decisions-log)
 - [Verification evidence](docs/verification.md)
 - [Code layout and contribution guide](docs/architecture.md)
 - [Remaining work, in order](docs/remaining-work.md)

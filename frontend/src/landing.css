@@ -1,4 +1,4 @@
-/* Landing page. Scoped under .lp; tokens follow DESIGN.md (no gradients, system type). */
+/* Landing page. Scoped under .lp; tokens follow docs/design.md (no gradients, system type). */
 html:has(.lp) {
     scroll-behavior: smooth;
     scroll-padding-top: 76px;

@@ -1,18 +1,11 @@
-import {
-    readFile,
-    readdir,
-    mkdir,
-    writeFile,
-    copyFile,
-} from "node:fs/promises";
+import { readFile, readdir, mkdir } from "node:fs/promises";
 import { build } from "esbuild";
 const assets = {};
 async function collect(directory) {
     for (const entry of await readdir(directory, { withFileTypes: true })) {
         const path = directory + "/" + entry.name;
         if (entry.isDirectory()) {
-            if (!["server", ".openai"].includes(entry.name))
-                await collect(path);
+            if (entry.name !== "server") await collect(path);
             continue;
         }
         const types = {
@@ -29,7 +22,6 @@ async function collect(directory) {
 }
 await collect("dist");
 await mkdir("dist/server", { recursive: true });
-await mkdir("dist/.openai", { recursive: true });
 await build({
     stdin: {
         contents: `import { createWorker } from './server/worker.ts'; export default createWorker(${JSON.stringify(assets)});`,
@@ -43,7 +35,6 @@ await build({
     minify: true,
     outfile: "dist/server/index.js",
 });
-await copyFile(".openai/hosting.json", "dist/.openai/hosting.json");
 console.log(
     "Hono Worker built with " +
         Object.keys(assets).length +

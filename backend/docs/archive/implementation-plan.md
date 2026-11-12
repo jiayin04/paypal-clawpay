@@ -1,10 +1,12 @@
+> Historical implementation plan. For the current system, use the [backend guide](../../README.md) and [architecture](../architecture.md).
+
 # ClawPay Middleware — Detailed Engineering Implementation Specification
 
 Companion documents:
 
-- [contracts.md](contracts.md): concrete MCP, device REST, approval-payload and LLM-proxy contracts.
-- [setup.md](setup.md): Windows setup for the backend and the ESP-Claw device together.
-- [../README.md](../README.md): backend commands, environment variables, database security model.
+- [contracts.md](../contracts.md): concrete MCP, device REST, approval-payload and LLM-proxy contracts.
+- [setup.md](../setup.md): Windows setup for the backend and the ESP-Claw device together.
+- [../README.md](../../README.md): backend commands, environment variables, database security model.
 
 Status, decisions and open items are in sections 19–21.
 
@@ -52,7 +54,7 @@ The daily spending cap is RM500. The phone-approval threshold is RM100, with pho
 
 ### Firmware work (separate ESP-Claw fork, not this backend)
 
-Listed so the contracts match. Tracked in [setup.md](setup.md) section E.
+Listed so the contracts match. Tracked in [setup.md](../setup.md) section E.
 
 - `skills/clawpay/SKILL.md` telling the device LLM the server URL, tools and rules.
 - `cap_mcp_client` patch: send `Authorization: Bearer <device_token>`.
@@ -65,7 +67,7 @@ Listed so the contracts match. Tracked in [setup.md](setup.md) section E.
 - ESP-Claw internals beyond the patches above, wake word, face recognition.
 - Hardware wiring, soldering and pin mapping.
 
-Do not assume ESP-Claw behavior that has not been verified. The verified facts used here come from [esp-claw-investigation.md](esp-claw-investigation.md) (source reading of esp-claw `9b23c15`; nothing built or flashed).
+Do not assume ESP-Claw behavior that has not been verified. The verified facts used here come from [esp-claw-investigation.md](../esp-claw-investigation.md) (source reading of esp-claw `9b23c15`; nothing built or flashed).
 
 ## 3. Architecture and Technology Choices
 
@@ -97,11 +99,11 @@ Supabase is the source of truth for orders, approvals, spending accounting and p
 
 ## 4. Repository Assessment
 
-Done in Phase 0: greenfield. No existing Xiaozhi/relay, AP2, AgentCore, A2A or PayPal code to reuse. See [../README.md](../README.md).
+Done in Phase 0: greenfield. No existing Xiaozhi/relay, AP2, AgentCore, A2A or PayPal code to reuse. See [../README.md](../../README.md).
 
 ## 5. Backend Structure
 
-The implemented layout is maintained in [architecture.md](architecture.md). Repository interfaces live in `app/repositories/ports/<feature>.py`, concrete Supabase adapters in `app/repositories/supabase/<feature>.py`, and shared fake adapters in `tests/fakes/repositories/`. The container wires them together. Tracked `docs/` and tests are self-contained within this repository; `.agents/` is local workflow scratch.
+The implemented layout is maintained in [architecture.md](../architecture.md). Repository interfaces live in `app/repositories/ports/<feature>.py`, concrete Supabase adapters in `app/repositories/supabase/<feature>.py`, and shared fake adapters in `tests/fakes/repositories/`. The container wires them together. Tracked `docs/` and tests are self-contained within this repository; `.agents/` is local workflow scratch.
 
 Business services stay independent of provider and transport formats. `integrations/mcp/` only translates JSON-RPC to service calls; `payment_service.py` enforces business rules; `integrations/paypal/` handles PayPal requests.
 
@@ -141,7 +143,7 @@ Never commit `.env` or real credentials. Do not place service-role keys, PayPal 
 
 ## 7. Supabase Database Design
 
-Implemented in `backend/supabase/migrations/*_initial_schema.sql`: `user_profiles`, `devices`, `payment_methods`, `merchants`, `orders`, `order_items`, `mandates`, `approvals`, `spending_records`, `payment_attempts`, `conversations`, `conversation_events`, `audit_logs`, `webhook_events`. Column-level detail and the security model are in [../README.md](../README.md).
+Implemented in `backend/supabase/migrations/*_initial_schema.sql`: `user_profiles`, `devices`, `payment_methods`, `merchants`, `orders`, `order_items`, `mandates`, `approvals`, `spending_records`, `payment_attempts`, `conversations`, `conversation_events`, `audit_logs`, `webhook_events`. Column-level detail and the security model are in [../README.md](../../README.md).
 
 Requirements that still apply to every new migration:
 
@@ -166,7 +168,7 @@ Database states (uppercase, existing CHECK constraint):
 
 Terminal or recovery: `DENIED`, `EXPIRED`, `CANCELLED`, `PAYMENT_FAILED`, `REQUIRES_RECONCILIATION`.
 
-API and MCP expose lowercase names. `AWAITING_APPROVAL` is rendered as `awaiting_device_approval` while the gadget approval is outstanding. The full mapping is in [contracts.md](contracts.md#8-order-state-machine).
+API and MCP expose lowercase names. `AWAITING_APPROVAL` is rendered as `awaiting_device_approval` while the gadget approval is outstanding. The full mapping is in [contracts.md](../contracts.md#8-order-state-machine).
 
 Rules:
 
@@ -176,7 +178,7 @@ Rules:
 
 ## 9. API Contracts
 
-Versioned REST endpoints under `/api/v1`; MCP at `/mcp`; LLM proxy at `/llm/v1`. Request/response bodies, auth and error codes are in [contracts.md](contracts.md). Summary:
+Versioned REST endpoints under `/api/v1`; MCP at `/mcp`; LLM proxy at `/llm/v1`. Request/response bodies, auth and error codes are in [contracts.md](../contracts.md). Summary:
 
 | Endpoint | Caller | Auth | Phase |
 | --- | --- | --- | --- |
@@ -339,7 +341,7 @@ Include failure cases, not only the happy path. Steps 2 and 5 can be simulated w
 
 Backend phases 0–4 are implemented; see section 21 and `docs/verification.md`. Hosted database execution and real-device/live-PayPal validation remain operator work.
 
-Do not attempt the entire integration in one pass. For every phase, report: files created or modified, design decisions, commands to run, tests executed with actual results, known limitations, remaining tasks and dependencies. Only move to the next phase after the current phase works and its acceptance criteria are met. Update [contracts.md](contracts.md) from "Proposed" to "Implemented" as each contract lands.
+Do not attempt the entire integration in one pass. For every phase, report: files created or modified, design decisions, commands to run, tests executed with actual results, known limitations, remaining tasks and dependencies. Only move to the next phase after the current phase works and its acceptance criteria are met. Update [contracts.md](../contracts.md) from "Proposed" to "Implemented" as each contract lands.
 
 ## 19. Decisions Log
 
@@ -349,7 +351,7 @@ Do not attempt the entire integration in one pass. For every phase, report: file
 | D2 | Device → ClawPay transport is a stateless MCP Streamable-HTTP server at `POST /mcp` on public HTTPS with a CA-signed cert. | Matches `cap_mcp_client` behavior. |
 | D3 | Device auth is a bearer device token (needs `cap_mcp_client` patch). Temporary fallback: `/mcp/<device_token>`. | Path token is demo-only. |
 | D4 | MCP tools: `search_products`, `create_order`, `get_order_status`, `get_spending_summary`, returning text-JSON content. No approve or capture tool over MCP. | |
-| D5 | Device endpoints: approval challenge, gadget approval (ECDSA P-256 SHA-256, base64url DER, single-use nonce, server-provided canonical bytes), admin-gated registration; optional pending-approvals, STT/TTS, LLM proxy. | See [contracts.md](contracts.md). |
+| D5 | Device endpoints: approval challenge, gadget approval (ECDSA P-256 SHA-256, base64url DER, single-use nonce, server-provided canonical bytes), admin-gated registration; optional pending-approvals, STT/TTS, LLM proxy. | See [contracts.md](../contracts.md). |
 | D6 | Approval on the device is a C task, not Lua and not an LLM-callable signing capability. | LLM-written Lua can call any capability and forge events (investigation section 6). |
 | D7 | Guaranteed demo input is Telegram or Web Chat text; push-to-talk voice is a stretch goal. | Voice is not built into ESP-Claw. |
 | D8 | PayPal Sandbox uses Malaysian accounts with MYR; fall back to USD if MYR or vault-without-purchase fails. Currency stays configurable. | |
@@ -357,7 +359,7 @@ Do not attempt the entire integration in one pass. For every phase, report: file
 | D10 | No separate orchestrator LLM: the device LLM (via the ClawPay LLM proxy) orchestrates by calling deterministic MCP tools. | |
 | D11 | Phone approval (> RM100) is deferred but still enforced: such orders stay blocked until phone approval is implemented or the policy is changed. | |
 | D12 | Supabase: local stack was used only to validate migrations and has been removed. The user creates a hosted project and runs `supabase login` / `supabase link --project-ref <ref>` / `supabase db push`. | |
-| D13 | Approval payload money is `amount_minor` (integer) + `currency`. | Rationale in [contracts.md](contracts.md#5-canonical-approval-payload). |
+| D13 | Approval payload money is `amount_minor` (integer) + `currency`. | Rationale in [contracts.md](../contracts.md#5-canonical-approval-payload). |
 | D14 | MCP server is hand-rolled JSON-RPC 2.0 (`app/integrations/mcp/`), not the `mcp` SDK. | Exact control of 202/405/401, stateless behaviour, 64 KB request and 3900-byte response caps; the surface is 5 methods. Implemented in Phase 2. |
 | D15 | Merchant protocol is a hand-rolled A2A JSON-RPC subset (`message/send` with one `data` part, agent card), not `a2a-sdk`. Mock agents run in-process via `httpx.ASGITransport` unless `*_AGENT_ENDPOINT` is set. | Deterministic mocks, no new dependency, no public route. Implemented in Phase 2. |
 | D16 | Every multi-row or money/approval state change is one Postgres function called with the service role (global lock order device → order → challenge → payment method → spending lock), retried once on deadlock/serialization failure. | One transaction per PostgREST call. Phase 2 RPCs: `register_device`, `revoke_device`, `create_order_from_quote`, `cancel_order`, `expire_order`, `expire_stale_orders`, `spending_summary`. |
@@ -388,7 +390,7 @@ Final decisions: MCP uses the hand-written stateless JSON-RPC handler; merchants
 
 ### Phase 0 + 1: done
 
-From [../README.md](../README.md) and `docs/verification.md` (iteration 2, review verdict APPROVED):
+From [../README.md](../../README.md) and `docs/verification.md` (iteration 2, review verdict APPROVED):
 
 - FastAPI app factory, typed `Settings` (`SecretStr` secrets, minor-unit policy, rejection of `*_MYR` names), redacting logging via LogRecord factory, generic error handler, docs disabled in production.
 - `GET /health` (liveness) and `GET /health/ready` (Supabase probe, cached 5 s, no error details).
