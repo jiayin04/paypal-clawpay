@@ -5,7 +5,7 @@ to record and transcribe a request, or invoke the Siri shortcut below.
 The app sends the transcribed text to `POST /api/v1/assistant/messages` with its
 `cpd_` token. The latest answer is shown; earlier messages are under History
 (the clock button), with New chat inside History. Replies aim for 8–16 words.
-Fish Audio speaks the reply as streamed PCM arrives, falling back to the built-in watch voice. Payment
+Fish Audio is the only reply voice and plays streamed PCM as it arrives. Payment
 review opens a separate sheet with the amount and merchant.
 
 ## Microphone speech-to-text
@@ -32,7 +32,7 @@ The watch uses `POST /api/v1/assistant/messages/stream` for newline-delimited li
 
 Carts retain saved item names, quantities and line totals. Before watch approval, choose and confirm a **saved, manually entered, current-location or fictional demo address**; Review and Confirm & pay require that selection. Payment is still PayPal Sandbox. The receipt shows **Sandbox paid**, items, total, order reference and confirmed payment time. It refreshes automatically after approval. Pending payments poll status for up to ~24 seconds, with Check status available afterward. Receipt reads are authenticated and scoped to the original device, and never submit another payment. The latest receipt ID is saved locally and restored after reopening the app.
 
-After Paid, **Simulate next step** advances local delivery through Confirmed → Preparing → Shipped → Delivered, with a `SIM-` tracking reference. Address and stage are saved per order on this watch. These are local simulations, not merchant/carrier confirmations, and are not synchronized to the web dashboard. Addresses are kept locally in the watch Keychain and are not sent to the shopping agent or retailer. Current-location lookup sends coordinates to Apple only after the user opts in.
+After Paid, **Next delivery update** advances local delivery through Confirmed → Preparing → Shipped → Delivered, with a `SIM-` tracking reference. Address and stage are saved per order on this watch. These are local simulations, not merchant/carrier confirmations, and are not synchronized to the web dashboard. Addresses are kept locally in the watch Keychain and are not sent to the shopping agent or retailer. Current-location lookup sends coordinates to Apple only after the user opts in.
 
 Channel3's public checkout docs currently say **coming soon**: https://channel3.mintlify.dev/docs/checkout . The integration calls product search and live price endpoints, not a retailer purchase endpoint. The receipt explicitly reports `retailer_order_status=not_submitted` and `fulfillment_mode=simulated`.
 
@@ -55,7 +55,7 @@ The OS purpose string is `NSLocationWhenInUseUsageDescription`. No Google Maps A
 
 ## Faster voice replies
 
-The watch uses authenticated `POST /api/v1/assistant/speech/stream`: Fish Audio HTTP streaming with `format=pcm`, 24 kHz mono signed 16-bit little-endian audio and `latency=low`. The backend forwards bounded chunks; it does not collect the entire clip. The watch prebuffers about 200 ms, then schedules PCM buffers in AVAudioEngine as the rest arrives. Starting another request cancels the old stream/playback. The Fish key remains on the backend. Provider failures fall back to Apple's built-in voice. The MP3 endpoint remains available for older clients.
+The watch uses authenticated `POST /api/v1/assistant/speech/stream`: Fish Audio HTTP streaming with `format=pcm`, 24 kHz mono signed 16-bit little-endian audio and `latency=low`. The backend forwards bounded chunks; it does not collect the entire clip. The watch prebuffers about 200 ms, then schedules PCM buffers in AVAudioEngine as the rest arrives. Starting another request cancels the old stream/playback. The Fish key remains on the backend. Provider failures leave the reply visible as text with a brief voice-unavailable message; no other TTS engine is used. The MP3 endpoint remains available for older clients.
 
 Fish also supports bidirectional WebSocket TTS, but this path streams audio from a completed short agent reply. Model/tool execution and batch transcription still precede playback; this is not full-duplex speech-to-speech. Successful single-tool order creation, spending summaries and confirmed paid status return short replies directly from trusted tool data, avoiding an extra LLM round trip. Product search and other status explanations still use the model.
 
@@ -131,7 +131,7 @@ remains a separate application.
 
 Needs Xcode with the watchOS simulator runtime (`xcodebuild -downloadPlatform watchOS`).
 
-1. Start the demo backend from `backend/`. It uses the in-memory store, mock merchants and a keyword stand-in for the LLM, and prints a device token. With `FISH_AUDIO_API_KEY` in `.env` it calls Fish Audio for speech (paid); without it the watch uses its own voice:
+1. Start the demo backend from `backend/`. It uses the in-memory store, mock merchants and a keyword stand-in for the LLM, and prints a device token. With `FISH_AUDIO_API_KEY` in `.env` it calls Fish Audio for speech (paid); without it replies remain text-only:
 
    ```bash
    uv run python -m scripts.assistant_demo_server
@@ -214,3 +214,5 @@ uv run --offline pytest tests/integration/test_watch_agent_flow.py
 That check mocks the LLM, Channel3 API and PayPal API. It verifies the watch HTTP
 contract, both A2A agents, and payment only after a valid signature; it does not
 establish that external credentials, billing or live catalog responses work.
+
+For a clean recording take on a Debug simulator, launch with `SIMCTL_CHILD_CLAWPAY_RECORDING_FRESH_START=1`. This opens a new conversation and skips automatic receipt restoration for that launch. It preserves device credentials, backend orders, payment records, and saved receipt addresses. The app labels local fulfillment as a delivery preview; Sandbox payment status and the no-shipment notice remain visible.

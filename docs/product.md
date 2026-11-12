@@ -12,7 +12,7 @@ The authorization format is project-specific. Full AP2 interoperability and sign
 
 ## Watch interaction
 
-Talk records foreground audio and sends a successful transcript automatically after a short pause. Stop & send is available as a manual alternative. Fish Audio handles transcription and streams spoken replies; the built-in Watch voice is the playback fallback. DeepSeek handles text reasoning and tool calls.
+Talk records foreground audio and sends a successful transcript automatically after a short pause. Stop & send is available as a manual alternative. Fish Audio handles transcription and is the only provider for spoken replies. If speech is unavailable, the reply remains visible as text. DeepSeek handles text reasoning and tool calls.
 
 A Siri App Shortcut hands a request into the same assistant path. Payment review and explicit confirmation remain mandatory. The Watch shows short replies, structured products, and completed action summaries rather than private model reasoning tokens.
 

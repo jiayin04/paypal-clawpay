@@ -32,7 +32,6 @@ struct ContentView: View {
     // Editable in Settings; simulator builds can also seed them from SIMCTL_CHILD_CLAWPAY_* variables.
     @AppStorage("baseURL") private var baseURL = "http://127.0.0.1:8000"
     @State private var deviceToken = ""  // kept in the Keychain, not UserDefaults
-    @AppStorage("useFishAudio") private var useFishAudio = true
     // On only when deviceToken is this watch's own registered device (scripts/register_watch.py).
     @AppStorage("approveOnWatch") private var approveOnWatch = false
     @AppStorage("lastOrderID") private var lastOrderID = ""
@@ -86,6 +85,10 @@ struct ContentView: View {
                         if busy {
                             TypingBubble(steps: progress)
                                 .id("thinking")
+                        }
+                        if let voiceError = speaker.lastError {
+                            Label(voiceError, systemImage: "speaker.slash")
+                                .font(.caption).foregroundStyle(.secondary)
                         }
                         if !busy {
                             ForEach(products.prefix(2)) { product in
@@ -177,7 +180,7 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     NavigationLink {
-                        SettingsView(baseURL: $baseURL, deviceToken: $deviceToken, useFishAudio: $useFishAudio,
+                        SettingsView(baseURL: $baseURL, deviceToken: $deviceToken,
                                      approveOnWatch: $approveOnWatch, lastVoice: speaker.lastVoice,
                                      approverKey: approverKey, keyError: keyError)
                     } label: {
@@ -322,6 +325,12 @@ struct ContentView: View {
             approveOnWatch = true
             return
         }
+        if env["CLAWPAY_RECORDING_FRESH_START"] == "1" {
+            // Clear the opening screen, preserving credentials and saved receipts.
+            lastOrderID = ""
+            newConversation()
+            return
+        }
         if let orderID = env["CLAWPAY_RECEIPT_ORDER_ID"], UUID(uuidString: orderID) != nil {
             lastOrderID = orderID
         }
@@ -446,7 +455,7 @@ struct ContentView: View {
                 if autoApprove, approveOnWatch, answer.approvalRequired {
                     approve()
                 }
-                await speaker.speak(answer.reply, client: client, useFishAudio: useFishAudio)
+                await speaker.speak(answer.reply, client: client)
             } catch {
                 guard self.client == client else { return }
                 busy = false
@@ -577,7 +586,7 @@ extension ContentView {
                 }
                 Task { await refreshReceipt() }
                 await speaker.speak(result.status == "paid" ? "Paid \(prepared.payload.display)." : result.message,
-                                    client: client, useFishAudio: useFishAudio)
+                                    client: client)
             } catch {
                 guard self.client == client else { return }
                 fail(order, error)
@@ -722,7 +731,7 @@ private struct AgentActivityView: View {
                     Label(step.message, systemImage: step.status == "failed" ? "exclamationmark.circle" : "checkmark.circle")
                         .font(.footnote).fixedSize(horizontal: false, vertical: true)
                 }
-                Text("Summaries of actual tool actions. Delivery updates are simulated.")
+                Text("Completed agent actions and order updates.")
                     .font(.caption).foregroundStyle(.secondary)
             }.scenePadding(.horizontal)
         }.navigationTitle("Agent activity")
@@ -777,7 +786,7 @@ private struct ApprovalCard: View {
                 }.disabled(order.isConfirming)
                 if let address = delivery.address {
                     Text(address.displayLines).font(.caption).foregroundStyle(.secondary).privacySensitive()
-                    Text(address.source == .demo ? "Fictional address. No real delivery." : "Address stays on this watch. Delivery is simulated.")
+                    Text(address.source == .demo ? "Example address. No items will be shipped." : "Address stays on this watch. Delivery preview only.")
                         .font(.caption2).foregroundStyle(.secondary)
                 }
             }
@@ -818,7 +827,7 @@ private struct ApprovalCard: View {
                 }
                 if let address = delivery.address {
                     Divider()
-                    Label("Delivery simulation", systemImage: "shippingbox").font(.footnote.weight(.semibold))
+                    Label("Delivery preview", systemImage: "shippingbox").font(.footnote.weight(.semibold))
                     Text(address.label + "\n" + address.displayLines).font(.caption).foregroundStyle(.secondary).privacySensitive()
                     ForEach(Array(DemoDelivery.Stage.allCases.dropFirst().enumerated()), id: \.offset) { index, stage in
                         let done = DemoDelivery.Stage.allCases.firstIndex(of: delivery.stage)! >= index + 1
@@ -830,11 +839,11 @@ private struct ApprovalCard: View {
                             .font(.caption2).monospaced().foregroundStyle(.secondary)
                     }
                     if delivery.stage != .delivered {
-                        Button("Simulate next step", action: onAdvanceDelivery)
+                        Button("Next delivery update", action: onAdvanceDelivery)
                             .font(.footnote).frame(minHeight: 44)
                     }
                 }
-                Text("No retailer order was placed. Shipping updates are a local demo.")
+                Text("Preview only. No retailer order or shipment is created.")
                     .font(.caption2).foregroundStyle(.secondary)
                 Button("Refresh receipt", action: onRefresh).font(.footnote).frame(minHeight: 44)
             }
@@ -853,14 +862,14 @@ private struct ApprovalCard: View {
             // Amount and merchant above come from the signed payload, not the chat.
             Text(prepared.payload.merchantName)
                 .font(.footnote).foregroundStyle(.secondary)
-            Text("Sandbox payment · delivery is simulated").font(.caption2).foregroundStyle(.secondary)
+            Text("Sandbox payment · delivery preview").font(.caption2).foregroundStyle(.secondary)
             approveButton(title: "Confirm & pay", action: onConfirm)
             Button("Not now", role: .cancel, action: onCancel)
                 .font(.footnote)
                 .frame(minHeight: 44)
         case .awaiting:
             if approveOnWatch {
-                Text("Sandbox payment · delivery is simulated").font(.caption2).foregroundStyle(.secondary)
+                Text("Sandbox payment · delivery preview").font(.caption2).foregroundStyle(.secondary)
                 approveButton(title: "Review", action: onApprove).disabled(delivery.address == nil)
             } else {
                 Text("Hold your device’s button to pay.").font(.caption2).foregroundStyle(.white.opacity(0.85))
@@ -954,7 +963,6 @@ private struct SpeechInputView: View {
 struct SettingsView: View {
     @Binding var baseURL: String
     @Binding var deviceToken: String
-    @Binding var useFishAudio: Bool
     @Binding var approveOnWatch: Bool
     let lastVoice: SpeechPlayer.Voice?
     let approverKey: ApproverKey?
@@ -963,7 +971,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Voice") {
-                Toggle("Fish Audio", isOn: $useFishAudio)
+                LabeledContent("Voice", value: "Fish Audio")
                 if let lastVoice {
                     Text("Last reply: \(lastVoice.rawValue)").font(.caption2).foregroundStyle(.secondary)
                 }

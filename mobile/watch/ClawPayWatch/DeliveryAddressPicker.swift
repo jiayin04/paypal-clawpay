@@ -57,10 +57,10 @@ struct DeliveryAddressPicker: View {
                         }
                         if location.isBusy { Button("Cancel lookup") { location.cancel() } }
                     } footer: {
-                        Text("Choose a saved address or confirm a location suggestion. Delivery is simulated.")
+                        Text("Choose an address and review it before continuing.")
                     }
                     if !manageSaved {
-                        Section("Fictional demo addresses") {
+                        Section("Example addresses") {
                             ForEach(DemoDelivery.addresses) { address in
                                 Button(address.label) { location.cancel(); draft = address }
                             }
@@ -154,7 +154,7 @@ private struct DeliveryAddressEditor: View {
             } header: {
                 Text(address.source == .currentLocation ? "Location suggestion" : "Delivery address")
             } footer: {
-                Text(address.source == .demo ? "Fictional address. No real delivery." : "Check street, building, postal code and unit. A location suggestion may be approximate. This order is a simulation.")
+                Text(address.source == .demo ? "Example address. No items will be shipped." : "Check the street, building, postal code and unit. Delivery preview only.")
             }
             if !manageSaved && address.source != .demo {
                 Section {
