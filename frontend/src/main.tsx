@@ -39,6 +39,7 @@ import {
     human,
     statusLabel,
     eventTitle,
+    eventSource,
     eventDetail,
     passportReason,
 } from "./data";
@@ -597,12 +598,7 @@ function App() {
                         <strong>{eventTitle(event)}</strong>
                         <p>{eventDetail(event)}</p>
                         <span className="event-meta">
-                            {human(
-                                event.source || event.actor_type || "ClawPay",
-                            )}
-                            {event.latency_ms != null
-                                ? ` · ${event.latency_ms} ms`
-                                : ""}
+                            {eventSource(event)}
                             {event.outcome ? ` · ${human(event.outcome)}` : ""}
                         </span>
                     </div>
@@ -633,7 +629,9 @@ function App() {
                     <span className="workspace-avatar">C</span>
                     <div>
                         <strong>Personal workspace</strong>
-                        <span>PayPal Sandbox</span>
+                        <span>
+                            {mode === "demo" ? "Demo workspace" : "Your account"}
+                        </span>
                     </div>
                     <ShieldCheck size={16} />
                 </div>
@@ -676,7 +674,7 @@ function App() {
                         <ArrowUpRight size={15} />
                     </button>
                     <span className="sidebar-caption">
-                        ClawPay · Hackathon build
+                        ClawPay · You stay in control
                     </span>
                 </div>
             </aside>
@@ -801,9 +799,9 @@ function App() {
                             </strong>{" "}
                             <span>
                                 {mode === "demo"
-                                    ? "All activity below is sample data. No payments are made."
+                                    ? "Explore how it works. No purchases or payments are made."
                                     : error
-                                      ? "Some information could not be refreshed. Available snapshots remain visible."
+                                      ? "Some information could not be refreshed. Previously loaded activity remains visible."
                                       : "Only your account’s records are shown. Updates every 15 seconds."}
                             </span>
                         </p>
@@ -831,7 +829,7 @@ function App() {
                     </div>
                     {mode === "demo" && updated && (
                         <p className="refresh-note" role="status">
-                            Demo snapshot refreshed at{" "}
+                            Demo refreshed at{" "}
                             {time(updated.toISOString())}. Sample data stays the
                             same.
                         </p>
@@ -841,7 +839,7 @@ function App() {
                             <p>
                                 {error}{" "}
                                 {updated
-                                    ? "Showing the last available snapshot."
+                                    ? "Showing your last available activity."
                                     : ""}
                             </p>
                             <button
@@ -907,7 +905,7 @@ function App() {
                                 </div>
                                 <div>
                                     <span className="stat-label">
-                                        Orders in this snapshot{" "}
+                                        Orders shown{" "}
                                         <ShoppingBag size={16} />
                                     </span>
                                     <strong>
@@ -918,7 +916,7 @@ function App() {
                                     </strong>
                                     <span>
                                         {known("orders")
-                                            ? `${data.orders.filter((o) => o.status === "paid").length} paid · latest 50 orders`
+                                            ? `${data.orders.filter((o) => o.status === "paid").length} paid · recent activity`
                                             : "Order count unavailable"}
                                     </span>
                                 </div>
@@ -1207,7 +1205,7 @@ function App() {
                             <div className="list-caption">
                                 <span>
                                     {known("orders")
-                                        ? `${orders.length} orders · latest 50`
+                                        ? `${orders.length} orders shown`
                                         : "Orders unavailable"}
                                 </span>
                                 <span>Amount / status</span>
@@ -1237,7 +1235,7 @@ function App() {
                                             ? "Activity stream"
                                             : "Audit stream"}
                                     </h2>
-                                    <span className="muted">Latest 50</span>
+                                    <span className="muted">Recent activity</span>
                                 </div>
                                 {!known("events") ? (
                                     unavailable("activity")
@@ -1256,8 +1254,8 @@ function App() {
                                     <div>
                                         <h2>Conversations</h2>
                                         <p>
-                                            Open a session to see its tool
-                                            events.
+                                            Open a conversation to see what
+                                            happened.
                                         </p>
                                     </div>
                                     <MessageSquare size={20} />
@@ -1335,10 +1333,6 @@ function App() {
                                                         ? `Last seen ${dateTime(device.last_seen_at)}`
                                                         : "Not seen yet"}
                                                 </p>
-                                                <span className="muted">
-                                                    {device.key_algorithm} · Key
-                                                    version {device.key_version}
-                                                </span>
                                             </div>
                                         </div>
                                     ))
@@ -1385,19 +1379,17 @@ function App() {
                                     ))
                                 ) : (
                                     <Empty title="No wallet connected">
-                                        Complete the PayPal Sandbox setup before
-                                        checkout.
+                                        Connect your PayPal account on your watch
+                                        before checkout.
                                     </Empty>
                                 )}
                                 <div className="payment-environment">
                                     <span className="status neutral">
-                                        Sandbox
+                                        Demo payments
                                     </span>
                                     <p>
-                                        This hackathon build uses PayPal
-                                        Sandbox. Channel3 provides the catalog;
-                                        real retailer fulfillment is not
-                                        connected.
+                                        No real money is charged, and no items
+                                        are shipped in this experience.
                                     </p>
                                 </div>
                             </section>
@@ -1444,8 +1436,7 @@ function App() {
                                                     {passport.status ===
                                                     "revoked"
                                                         ? `Revoked ${dateTime(passport.revoked_at || passport.created_at)}`
-                                                        : `Expires ${dateTime(passport.expires_at)}`}{" "}
-                                                    · Key {passport.key_id}
+                                                        : `Expires ${dateTime(passport.expires_at)}`}
                                                 </span>
                                             </div>
                                             <Status value={passport.status} />
@@ -1503,11 +1494,9 @@ function App() {
                                 <div className="security-note">
                                     <ShieldCheck size={19} />
                                     <p>
-                                        Every decision is a signed receipt you
-                                        can verify with ClawPay’s public key.
-                                        Passports are issued and revoked through
-                                        the ClawPay API, not this read-only
-                                        dashboard.
+                                        Your agent’s permissions are checked
+                                        before an order is accepted. Review
+                                        the decisions here.
                                     </p>
                                 </div>
                             </section>
@@ -1545,16 +1534,15 @@ function App() {
                                     </button>
                                 ))}
                                 <p className="footnote">
-                                    Interactive simulations of supported backend
-                                    flows. These replays never call agents or
-                                    payment providers.
+                                    Explore each journey step by step. These
+                                    previews make no purchases or payments.
                                 </p>
                             </section>
                             <section className="panel simulation">
                                 <div className="section-heading">
                                     <h2>{scenarios[scenario].title}</h2>
                                     <span className="status neutral">
-                                        Simulation
+                                        Interactive preview
                                     </span>
                                 </div>
                                 <blockquote>
@@ -1631,9 +1619,9 @@ function App() {
                         <span>
                             {mode === "demo"
                                 ? "Sample workspace"
-                                : "Owner-scoped data"}
+                                : "Your private workspace"}
                             <i />
-                            PayPal Sandbox
+                            PayPal
                         </span>
                     </footer>
                 </main>
@@ -1816,8 +1804,8 @@ function App() {
                         )}
                         <p className="footnote">
                             {mode === "demo"
-                                ? "This order and its trace are sample data."
-                                : "Sensitive tokens and provider payloads are excluded from this view."}
+                                ? "This example shows how an order progresses. No purchases or payments are made."
+                                : "Only details relevant to your order are shown here."}
                         </p>
                     </>
                 )}
@@ -1825,7 +1813,7 @@ function App() {
             <Modal
                 open={Boolean(conversation)}
                 onClose={() => setConversation(null)}
-                label="Conversation events"
+                label="Conversation activity"
                 wide
             >
                 {conversation && (
@@ -1865,8 +1853,8 @@ function App() {
                     </p>
                     <p>
                         The dashboard is your read-only view of those decisions.
-                        Payments run in PayPal Sandbox; product fulfillment is
-                        not connected.
+                        This preview makes no purchases or payments, and no
+                        items are shipped.
                     </p>
                     {session && (
                         <div className="account-info">

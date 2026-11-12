@@ -35,7 +35,7 @@ await page.getByRole("button", { name: /Agent messages/ }).click();
 assert.equal(
     await page
         .getByRole("dialog")
-        .getByText("Quote Cart", { exact: true })
+        .getByText("Cart quote", { exact: true })
         .count(),
     1,
 );
@@ -56,13 +56,13 @@ await page
     .getByRole("button", { name: "Activity" })
     .click();
 await page.getByRole("button", { name: /Watch conversation/ }).click();
-await page.getByRole("dialog", { name: "Conversation events" }).waitFor();
+await page.getByRole("dialog", { name: "Conversation activity" }).waitFor();
 await page.keyboard.press("Escape");
 await page
     .getByRole("navigation", { name: "Main navigation", exact: true })
     .getByRole("button", { name: "Devices" })
     .click();
-assert.equal(await main.getByText("P-256 · Key version 1").count(), 1);
+assert.equal(await main.locator(".device-row").count(), 1);
 await page
     .getByRole("navigation", { name: "Main navigation", exact: true })
     .getByRole("button", { name: "Demo lab" })

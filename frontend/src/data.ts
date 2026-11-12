@@ -194,7 +194,7 @@ export const demoEvents: Event[] = [
         source: "audit_logs",
         actor_type: "agent",
         created_at: ago(18),
-        summary: { message: "PayPal Sandbox confirmed $26.00." },
+        summary: { message: "Example: PayPal confirms $26.00." },
     },
     {
         id: "e5",
@@ -334,7 +334,7 @@ export const demoTimeline = (order: Order): Event[] =>
                   id: "t4",
                   source: "payment_attempts",
                   status: "succeeded",
-                  summary: { message: "PayPal Sandbox confirmed the payment." },
+                  summary: { message: "Example: PayPal confirms the payment." },
                   created_at: ago(18),
               },
           ]
@@ -383,7 +383,7 @@ export const scenarios = [
             "Find a water bottle under $40, then review it on your wrist.",
         prompt: "“Find me a water bottle under $40.”",
         steps: [
-            ["Watch", "Speech becomes a reviewable transcript."],
+            ["Watch", "Your spoken request is sent to ClawPay."],
             ["ClawPay", "The assistant searches within your price range."],
             [
                 "Channel3",
@@ -393,7 +393,7 @@ export const scenarios = [
                 "Watch approval",
                 "You review the $34 cart and sign the approval.",
             ],
-            ["PayPal agent", "Sandbox payment completes after authorization."],
+            ["PayPal agent", "The preview shows payment completing after authorization."],
         ],
     },
     {
@@ -411,16 +411,16 @@ export const scenarios = [
     {
         id: "recovery",
         title: "Resolve the unknown",
-        description: "Recover a payment result after a slow provider response.",
+        description: "Find out what happened when a payment takes longer than expected.",
         prompt: "“Did my payment go through?”",
         steps: [
             [
                 "PayPal agent",
-                "The original request timed out after submission.",
+                "The payment response takes longer than expected.",
             ],
-            ["ClawPay", "The order is marked for reconciliation."],
+            ["ClawPay", "ClawPay checks the payment status."],
             [
-                "Provider check",
+                "PayPal check",
                 "Check the existing payment before attempting again.",
             ],
             ["Result", "A confirmed payment updates the order to Paid."],
@@ -451,11 +451,26 @@ export const statusLabel = (status: string) =>
         payment_pending: "Payment pending",
         payment_failed: "Payment failed",
     })[status.toLowerCase()] || human(status.toLowerCase());
+export const eventSource = (event: Event) =>
+    ({
+        conversation_events: "Conversation",
+        a2a_messages: "Agent handoff",
+        audit_logs: "Payment activity",
+        approvals: "Approval",
+        payment_attempts: "Payment",
+    })[event.source || ""] || human(event.actor_type || "ClawPay");
 export const eventTitle = (event: Event) =>
     event.method
-        ? human(event.method)
+        ? ({
+              quote_cart: "Cart quote",
+              "payment.execute": "Payment request",
+          })[event.method] || human(event.method)
         : event.event_type
-          ? human(event.event_type)
+          ? ({
+                "tool.called": "Agent action",
+                "merchant.quote_received": "Cart quoted",
+                "payment.succeeded": "Payment confirmed",
+            })[event.event_type] || human(event.event_type)
           : event.decision
             ? `Approval ${event.decision}`
             : event.status
@@ -465,7 +480,7 @@ export const eventDetail = (event: Event) =>
     String(
         event.summary?.message ||
             event.summary?.query ||
-            event.summary?.tool ||
+            (event.summary?.tool ? human(String(event.summary.tool)) : "") ||
             event.summary?.reason ||
             event.merchant_code ||
             event.actor_type ||

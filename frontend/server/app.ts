@@ -67,7 +67,7 @@ export function createApp(config: Config, fetcher: typeof fetch = fetch) {
                 {
                     error: {
                         message:
-                            "Live backend is not connected to this dashboard.",
+                            "Live activity is currently unavailable. Please try again later.",
                     },
                 },
                 503,
@@ -108,7 +108,7 @@ export function createApp(config: Config, fetcher: typeof fetch = fetch) {
                     {
                         error: {
                             message:
-                                "Backend returned an unexpected response. Try refreshing.",
+                                "Activity could not be loaded. Please refresh and try again.",
                         },
                     },
                     502,
@@ -125,7 +125,7 @@ export function createApp(config: Config, fetcher: typeof fetch = fetch) {
                 {
                     error: {
                         message:
-                            "Cannot reach ClawPay. Check the backend connection and retry.",
+                            "Cannot reach ClawPay right now. Please try again.",
                     },
                 },
                 502,

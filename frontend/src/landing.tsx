@@ -70,8 +70,8 @@ const features = [
     },
     {
         icon: FlaskConical,
-        title: "Clearly labeled demo",
-        body: "Step-by-step simulations show the full flow using sample data. No agents are called and nothing is paid.",
+        title: "Explore before you connect",
+        body: "Follow a shopping journey from your request to approval. No purchases or payments are made.",
     },
 ];
 
@@ -79,7 +79,7 @@ const safeguards = [
     "Payment confirmation happens on the watch, never in the browser.",
     "Uncertain payment results are reconciled with PayPal before an order is marked paid.",
     "The web dashboard is read-only and only shows your own account's records.",
-    "No admin keys, signing keys or payment credentials are sent to the browser.",
+    "Your payment details stay protected and are never exposed in the dashboard.",
 ];
 
 const prefersReducedMotion = () =>
@@ -292,7 +292,7 @@ export function LandingPage({ navigate }: { navigate: Navigate }) {
                         <div className="lp-hero-copy">
                             <span className="lp-eyebrow">
                                 <Watch size={14} />
-                                Hackathon prototype · PayPal Sandbox
+                                Agent-led shopping · Approved by you
                             </span>
                             <h1>
                                 <span className="lp-line">Shop by voice.</span>
@@ -319,7 +319,7 @@ export function LandingPage({ navigate }: { navigate: Navigate }) {
                                 </a>
                             </div>
                             <p className="lp-note">
-                                The demo uses labeled sample data. No payments
+                                Explore the experience. No purchases or payments
                                 are made.
                             </p>
                         </div>
@@ -467,8 +467,8 @@ export function LandingPage({ navigate }: { navigate: Navigate }) {
                             </ul>
                             <p className="lp-footnote">
                                 <KeyRound size={14} />
-                                Payments run in PayPal Sandbox. Shipping is
-                                simulated, and no order is sent to a retailer.
+                                This interactive preview makes no purchases or
+                                payments. No items are shipped.
                             </p>
                         </div>
                     </div>
@@ -509,7 +509,7 @@ export function LandingPage({ navigate }: { navigate: Navigate }) {
                         </DemoLink>
                     </nav>
                     <span className="lp-footer-caption">
-                        ClawPay · Hackathon build
+                        ClawPay · You stay in control
                     </span>
                 </div>
             </footer>
