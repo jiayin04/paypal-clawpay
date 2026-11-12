@@ -8,7 +8,7 @@ const context = await browser.newContext({
 const page = await context.newPage();
 const errors = [];
 page.on("pageerror", (error) => errors.push(error.message));
-await page.goto("http://127.0.0.1:8787");
+await page.goto("http://127.0.0.1:8787/dashboard");
 await page.getByRole("heading", { name: "Overview", exact: true }).waitFor();
 await page.screenshot({
     path: "../.impeccable/review/desktop.png",
@@ -196,7 +196,7 @@ await livePage.route("**/api/v1/**", (route) => {
                 : { [keys[key] || key]: [] },
     });
 });
-await livePage.goto("http://127.0.0.1:8787");
+await livePage.goto("http://127.0.0.1:8787/dashboard");
 await livePage.getByRole("button", { name: "Connect live" }).click();
 await livePage.getByLabel("Email", { exact: true }).fill("owner@example.com");
 await livePage.getByLabel("Password", { exact: true }).fill("example-password");

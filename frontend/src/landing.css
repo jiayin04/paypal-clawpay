@@ -1,0 +1,1385 @@
+/* Landing page. Scoped under .lp; tokens follow DESIGN.md (no gradients, system type). */
+html:has(.lp) {
+    scroll-behavior: smooth;
+    scroll-padding-top: 76px;
+}
+.lp {
+    --lp-action: #0866e6;
+    --lp-action-hover: #0056c7;
+    --lp-canvas: #f6f7f9;
+    --lp-surface: #ffffff;
+    --lp-ink: #20242d;
+    --lp-muted: #59677a;
+    --lp-border: #e3e7ed;
+    --lp-control-border: #dce1e8;
+    --lp-control-ink: #414b5b;
+    --lp-control-hover: #f1f5fa;
+    --lp-approval: #eaf2ff;
+    --lp-approval-ink: #24558d;
+    min-height: 100vh;
+    background: var(--lp-surface);
+    color: var(--lp-ink);
+}
+.lp p {
+    color: var(--lp-muted);
+}
+/* Undo the dashboard's global main layout so sections run full-bleed. */
+.lp main {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    outline: none;
+}
+.lp-container {
+    width: 100%;
+    max-width: 1160px;
+    margin: 0 auto;
+    padding-inline: 32px;
+}
+
+/* Navigation */
+.lp-nav {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: rgba(255, 255, 255, 0.82);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border-bottom: 1px solid transparent;
+    transition:
+        border-color 240ms ease,
+        box-shadow 240ms ease;
+}
+.lp-scrolled .lp-nav {
+    border-bottom-color: var(--lp-border);
+    box-shadow: 0 6px 20px rgba(32, 36, 45, 0.05);
+}
+/* Reading progress along the bottom edge of the nav. */
+.lp-progress {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 2px;
+    background: var(--lp-action);
+    transform-origin: 0 50%;
+    transform: scaleX(var(--lp-progress, 0));
+}
+.lp-nav-inner {
+    display: flex;
+    align-items: center;
+    gap: 32px;
+    height: 64px;
+}
+.lp-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--lp-ink);
+    text-decoration: none;
+    font-size: 17px;
+    font-weight: 680;
+    letter-spacing: -0.02em;
+}
+.lp-brand img {
+    width: 28px;
+    height: 28px;
+}
+.lp-nav-links {
+    display: flex;
+    gap: 28px;
+    margin-right: auto;
+}
+.lp-nav-links a,
+.lp-footer-links a {
+    color: var(--lp-control-ink);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 560;
+    transition: color 120ms;
+}
+.lp-nav-links a:hover,
+.lp-footer-links a:hover {
+    color: var(--lp-action);
+}
+
+/* Buttons */
+.lp-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 11px 18px;
+    border: 1px solid var(--lp-action);
+    border-radius: 8px;
+    background: var(--lp-action);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    text-decoration: none;
+    transition:
+        background-color 120ms,
+        border-color 120ms,
+        color 120ms;
+}
+.lp-button:hover {
+    background: var(--lp-action-hover);
+    border-color: var(--lp-action-hover);
+}
+.lp-button:active {
+    transform: scale(0.98);
+}
+.lp-button.small {
+    min-height: 38px;
+    padding: 8px 14px;
+    font-size: 13px;
+    margin-left: auto;
+}
+.lp-nav-links + .lp-button.small {
+    margin-left: 0;
+}
+.lp-button.secondary {
+    background: var(--lp-surface);
+    border-color: var(--lp-control-border);
+    color: var(--lp-control-ink);
+}
+.lp-button.secondary:hover {
+    background: var(--lp-control-hover);
+}
+
+/* Hero */
+.lp-hero {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+    background: var(--lp-canvas);
+    border-bottom: 1px solid var(--lp-border);
+}
+/* Background: a faint dot grid that fades out away from the watch. */
+.lp-hero::before {
+    content: "";
+    position: absolute;
+    inset: -60px 0;
+    z-index: -1;
+    background-image: radial-gradient(circle, #c9d1dc 1.1px, transparent 1.6px);
+    background-size: 24px 24px;
+    -webkit-mask-image: radial-gradient(
+        ellipse 70% 75% at 72% 48%,
+        #000 0%,
+        rgba(0, 0, 0, 0.55) 45%,
+        transparent 78%
+    );
+    mask-image: radial-gradient(
+        ellipse 70% 75% at 72% 48%,
+        #000 0%,
+        rgba(0, 0, 0, 0.55) 45%,
+        transparent 78%
+    );
+    pointer-events: none;
+}
+.lp-hero-inner {
+    position: relative;
+}
+/* Concentric rings around the watch, like sound waves from a voice request. */
+.lp-watch-wrap {
+    position: relative;
+}
+.lp-watch {
+    z-index: 1;
+}
+.lp-trace-wrap {
+    z-index: 2;
+}
+.lp-rings {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+}
+.lp-rings span {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: var(--d);
+    height: var(--d);
+    margin: calc(var(--d) / -2) 0 0 calc(var(--d) / -2);
+    border-radius: 50%;
+    border: 1px solid rgba(8, 102, 230, var(--a));
+}
+.lp-rings span:nth-child(1) {
+    --d: 340px;
+    --a: 0.16;
+    background: rgba(255, 255, 255, 0.55);
+}
+.lp-rings span:nth-child(2) {
+    --d: 500px;
+    --a: 0.11;
+}
+.lp-rings span:nth-child(3) {
+    --d: 680px;
+    --a: 0.07;
+    border-style: dashed;
+}
+.lp-rings .lp-ripple {
+    --d: 340px;
+    --a: 0.35;
+    opacity: 0;
+}
+.lp-hero-inner {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    align-items: center;
+    gap: 56px;
+    padding-top: 96px;
+    padding-bottom: 96px;
+}
+.lp-eyebrow,
+.lp-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--lp-action);
+}
+.lp-eyebrow {
+    padding: 6px 11px;
+    border-radius: 999px;
+    background: var(--lp-approval);
+    color: var(--lp-approval-ink);
+}
+.lp-hero h1 {
+    margin-top: 22px;
+    font-size: clamp(40px, 5.6vw, 64px);
+    line-height: 1.05;
+    letter-spacing: -0.045em;
+    font-weight: 700;
+}
+.lp-hero .lp-line {
+    display: block;
+}
+.lp-lede {
+    margin-top: 22px;
+    max-width: 34em;
+    font-size: 18px;
+    line-height: 1.55;
+}
+.lp-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 32px;
+}
+.lp-note {
+    margin-top: 16px;
+    font-size: 13px;
+}
+
+/* Hero visual: flat watch mock plus an activity card */
+.lp-visual {
+    position: relative;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    min-height: 420px;
+    max-width: 520px;
+    width: 100%;
+    margin-left: auto;
+    padding-right: 48px;
+}
+.lp-watch {
+    position: relative;
+    width: 232px;
+    height: 280px;
+    padding: 14px;
+    border-radius: 64px;
+    background: #1c1f26;
+    border: 1px solid #0e1014;
+}
+.lp-watch-crown {
+    position: absolute;
+    right: -9px;
+    top: 74px;
+    width: 10px;
+    height: 44px;
+    border-radius: 0 6px 6px 0;
+    background: #2c313a;
+}
+.lp-watch-screen {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 30px 24px 22px;
+    border-radius: 50px;
+    background: #000;
+    color: #fff;
+}
+.lp-watch-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #8ab8ff;
+}
+.lp-watch-item {
+    margin-top: 8px;
+    font-size: 16px;
+    line-height: 1.25;
+    font-weight: 620;
+}
+.lp-watch-merchant {
+    margin-top: 4px;
+    font-size: 12px;
+    color: #9aa3b2;
+}
+.lp-watch-total {
+    margin-top: auto;
+    font-size: 30px;
+    font-weight: 680;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+}
+.lp-watch-confirm {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 10px;
+    padding: 9px;
+    border-radius: 999px;
+    background: var(--lp-action);
+    font-size: 14px;
+    font-weight: 620;
+}
+.lp-trace-wrap {
+    position: absolute;
+    left: 0;
+    bottom: 18px;
+    width: 236px;
+}
+.lp-trace {
+    padding: 16px 18px;
+    border: 1px solid var(--lp-border);
+    border-radius: 14px;
+    background: var(--lp-surface);
+    box-shadow: 0 12px 32px rgba(32, 36, 45, 0.08);
+}
+.lp-trace-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--lp-muted);
+}
+.lp-trace ol {
+    list-style: none;
+    margin: 10px 0 0;
+    padding: 0;
+    display: grid;
+    gap: 9px;
+}
+.lp-trace li {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 13px;
+    font-weight: 560;
+}
+.lp-trace-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+.lp-trace-dot.done {
+    background: #21734c;
+}
+.lp-trace-dot.wait {
+    background: #946016;
+}
+
+/* Facts strip */
+.lp-facts {
+    border-bottom: 1px solid var(--lp-border);
+}
+.lp-facts-inner {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.lp-facts-inner > div {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 28px 24px;
+    border-left: 1px solid var(--lp-border);
+}
+.lp-facts-inner > div:first-child {
+    border-left: 0;
+    padding-left: 0;
+}
+.lp-facts strong {
+    font-size: 22px;
+    font-weight: 680;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+}
+.lp-facts > div > span {
+    font-size: 13px;
+    color: var(--lp-muted);
+}
+
+/* Sections */
+.lp-section {
+    padding: 104px 0;
+}
+.lp-section.alt {
+    background: var(--lp-canvas);
+    border-top: 1px solid var(--lp-border);
+    border-bottom: 1px solid var(--lp-border);
+}
+.lp-section-head {
+    max-width: 640px;
+    margin: 0 auto 56px;
+    text-align: center;
+}
+.lp-section-head.left {
+    margin: 0;
+    text-align: left;
+}
+.lp-section-head h2,
+.lp-cta h2 {
+    margin-top: 12px;
+    font-size: clamp(30px, 3.6vw, 42px);
+    line-height: 1.12;
+    letter-spacing: -0.04em;
+    font-weight: 700;
+}
+.lp-section-head p {
+    margin-top: 14px;
+    font-size: 17px;
+}
+.lp-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: var(--lp-approval);
+    color: var(--lp-action);
+}
+.lp h3 {
+    font-size: 17px;
+    letter-spacing: -0.018em;
+}
+
+/* How it works: dot band behind the track and cards, fading out at both sides */
+.lp-how {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+}
+.lp-how::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 46%;
+    bottom: 0;
+    z-index: -1;
+    background-image: radial-gradient(circle, #c9d1dc 1.1px, transparent 1.6px);
+    background-size: 24px 24px;
+    -webkit-mask-image: radial-gradient(
+        ellipse 55% 60% at 50% 45%,
+        #000 0%,
+        rgba(0, 0, 0, 0.5) 50%,
+        transparent 85%
+    );
+    mask-image: radial-gradient(
+        ellipse 55% 60% at 50% 45%,
+        #000 0%,
+        rgba(0, 0, 0, 0.5) 50%,
+        transparent 85%
+    );
+    pointer-events: none;
+}
+
+/* Numbered track above the step cards; columns match the step grid */
+.lp-rail {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 20px;
+    justify-items: center;
+    margin-bottom: 28px;
+}
+.lp-rail-line {
+    position: absolute;
+    top: 50%;
+    /* From the centre of the first column to the centre of the last */
+    left: calc((100% - 60px) / 8);
+    right: calc((100% - 60px) / 8);
+    height: 2px;
+    margin-top: -1px;
+    border-radius: 2px;
+    background: var(--lp-border);
+}
+.lp-rail-fill {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: #9ec0f6;
+    transform-origin: 0 50%;
+}
+.lp-rail-runner {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+}
+.lp-rail-runner span {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 10px;
+    height: 10px;
+    margin: -5px 0 0 -5px;
+    border-radius: 50%;
+    background: var(--lp-action);
+    box-shadow: 0 0 0 4px rgba(8, 102, 230, 0.18);
+}
+.lp-rail-node {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid var(--lp-control-border);
+    background: var(--lp-surface);
+    border-color: #9ec0f6;
+    color: var(--lp-action);
+    font-size: 13px;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Steps */
+.lp-steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 20px;
+    counter-reset: none;
+}
+.lp-step {
+    position: relative;
+    padding: 24px;
+    border: 1px solid var(--lp-border);
+    border-radius: 14px;
+    background: var(--lp-surface);
+}
+.lp-step-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+.lp-step-number {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--lp-muted);
+}
+.lp-step p,
+.lp-card p {
+    margin-top: 8px;
+    font-size: 14.5px;
+    line-height: 1.55;
+}
+
+/* Feature grid */
+.lp-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+}
+.lp-card {
+    padding: 28px;
+    border: 1px solid var(--lp-border);
+    border-radius: 14px;
+    background: var(--lp-surface);
+}
+.lp-card h3 {
+    margin-top: 20px;
+}
+
+/* Features: faint line grid that fades toward the edges */
+.lp-features {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+}
+.lp-features::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background-image:
+        linear-gradient(rgba(8, 102, 230, 0.07) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(8, 102, 230, 0.07) 1px, transparent 1px);
+    background-size: 48px 48px;
+    background-position: center center;
+    -webkit-mask-image: radial-gradient(
+        ellipse 65% 70% at 50% 55%,
+        #000 0%,
+        rgba(0, 0, 0, 0.45) 50%,
+        transparent 82%
+    );
+    mask-image: radial-gradient(
+        ellipse 65% 70% at 50% 55%,
+        #000 0%,
+        rgba(0, 0, 0, 0.45) 50%,
+        transparent 82%
+    );
+    pointer-events: none;
+}
+/* Cards: large outline of the card's icon in the corner, accent bar on hover */
+.lp-card {
+    position: relative;
+    overflow: hidden;
+    /* Extra room so body text always ends above the corner icon */
+    padding-bottom: 48px;
+}
+.lp-card > :not(.lp-card-mark) {
+    position: relative;
+    z-index: 1;
+}
+.lp-card::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 2;
+    height: 2px;
+    background: var(--lp-action);
+    transform: scaleX(0);
+    transform-origin: 0 50%;
+    transition: transform 420ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.lp-card:hover::before {
+    transform: scaleX(1);
+}
+.lp-card-mark {
+    position: absolute;
+    right: -24px;
+    bottom: -34px;
+    z-index: 0;
+    color: var(--lp-action);
+    opacity: 0.07;
+    pointer-events: none;
+    transition:
+        opacity 300ms ease,
+        rotate 500ms cubic-bezier(0.2, 0.7, 0.2, 1),
+        translate 500ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.lp-card:hover .lp-card-mark {
+    opacity: 0.13;
+    rotate: -8deg;
+    translate: -6px -6px;
+}
+
+/* Security */
+.lp-security {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    gap: 64px;
+    align-items: center;
+}
+.lp-safeguards {
+    padding: 28px;
+    border: 1px solid var(--lp-border);
+    border-radius: 14px;
+    background: var(--lp-surface);
+}
+.lp-safeguards-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--lp-action);
+    font-size: 15px;
+}
+.lp-safeguards-head strong {
+    color: var(--lp-ink);
+}
+.lp-safeguards ul {
+    list-style: none;
+    margin: 18px 0 0;
+    padding: 0;
+}
+.lp-safeguards li {
+    display: flex;
+    gap: 12px;
+    padding: 14px 0;
+    border-top: 1px solid var(--lp-border);
+    font-size: 15px;
+    line-height: 1.5;
+}
+.lp-safeguards li svg {
+    margin-top: 1px;
+    color: #21734c;
+}
+.lp-footnote {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 6px;
+    padding-top: 16px;
+    border-top: 1px solid var(--lp-border);
+    font-size: 13px;
+}
+.lp-footnote svg {
+    margin-top: 3px;
+}
+
+/* Final CTA */
+.lp-cta {
+    padding: 0 0 104px;
+}
+.lp-cta-box {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 32px;
+    padding: 48px;
+    border-radius: 16px;
+    background: var(--lp-approval);
+}
+.lp-cta-box > div {
+    flex: 1;
+}
+.lp-cta h2 {
+    margin-top: 0;
+    color: var(--lp-approval-ink);
+}
+.lp-cta p {
+    margin-top: 10px;
+    max-width: 36em;
+    font-size: 16px;
+    color: #40638e;
+}
+
+/* Footer */
+.lp-footer {
+    border-top: 1px solid var(--lp-border);
+    background: var(--lp-canvas);
+}
+.lp-footer-inner {
+    display: flex;
+    align-items: center;
+    gap: 32px;
+    padding-top: 28px;
+    padding-bottom: 28px;
+}
+.lp-footer-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+    margin-right: auto;
+}
+.lp-footer-caption {
+    font-size: 13px;
+    color: var(--lp-muted);
+}
+
+/* Responsive */
+@media (max-width: 1000px) {
+    .lp-hero-inner,
+    .lp-security {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 48px;
+    }
+    .lp-hero-inner {
+        padding-top: 72px;
+        padding-bottom: 72px;
+    }
+    .lp-steps {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .lp-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .lp-facts-inner {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .lp-facts-inner > div:nth-child(3) {
+        border-left: 0;
+        padding-left: 0;
+    }
+    .lp-facts-inner > div:nth-child(n + 3) {
+        border-top: 1px solid var(--lp-border);
+    }
+}
+@media (max-width: 1000px) {
+    .lp-visual {
+        margin: 0 auto;
+    }
+    /* The 4-node track only lines up with a 4-column step grid */
+    .lp-rail {
+        display: none;
+    }
+    .lp-how::before {
+        top: 30%;
+    }
+}
+@media (max-width: 760px) {
+    .lp-container {
+        padding-inline: 20px;
+    }
+    /* Stack the activity card under the watch so it never covers the screen. */
+    .lp-visual {
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+        min-height: 0;
+        padding-right: 0;
+    }
+    .lp-trace-wrap {
+        position: static;
+        width: 100%;
+        max-width: 300px;
+    }
+    .lp-rings {
+        scale: 0.72;
+    }
+    .lp-hero::before {
+        -webkit-mask-image: radial-gradient(
+            ellipse 90% 60% at 50% 62%,
+            #000 0%,
+            rgba(0, 0, 0, 0.5) 45%,
+            transparent 80%
+        );
+        mask-image: radial-gradient(
+            ellipse 90% 60% at 50% 62%,
+            #000 0%,
+            rgba(0, 0, 0, 0.5) 45%,
+            transparent 80%
+        );
+    }
+    .lp-nav-links {
+        display: none;
+    }
+    .lp-nav-inner {
+        height: 60px;
+    }
+    .lp-nav-links + .lp-button.small {
+        margin-left: auto;
+    }
+    .lp-hero-inner {
+        padding-top: 56px;
+        padding-bottom: 56px;
+    }
+    .lp-lede {
+        font-size: 17px;
+    }
+    .lp-section {
+        padding: 72px 0;
+    }
+    .lp-section-head {
+        margin-bottom: 40px;
+    }
+    .lp-steps,
+    .lp-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    /* Stacked steps: a short connector links each card to the next */
+    .lp-step:not(:last-child)::after {
+        content: "";
+        position: absolute;
+        left: 43px;
+        bottom: -21px;
+        width: 2px;
+        height: 20px;
+        background: #9ec0f6;
+    }
+    .lp-cta {
+        padding-bottom: 72px;
+    }
+    .lp-cta-box {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 32px 24px;
+    }
+    .lp-footer-inner {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 18px;
+    }
+}
+@media (max-width: 430px) {
+    .lp-container {
+        padding-inline: 16px;
+    }
+    .lp-watch {
+        width: 200px;
+        height: 244px;
+        border-radius: 56px;
+    }
+    .lp-watch-screen {
+        border-radius: 44px;
+        padding: 24px 20px 18px;
+    }
+    .lp-facts-inner {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .lp-facts-inner > div {
+        border-left: 0;
+        padding: 18px 0;
+    }
+    .lp-facts-inner > div + div {
+        border-top: 1px solid var(--lp-border);
+    }
+    .lp-actions .lp-button {
+        flex: 1;
+    }
+    .lp-card-mark {
+        width: 76px;
+        height: 76px;
+        right: -16px;
+        bottom: -22px;
+    }
+    .lp-cta-box .lp-button {
+        width: 100%;
+    }
+}
+/* Hover feedback (kept separate from reveal so hover never waits on a stagger delay) */
+.lp-card,
+.lp-step {
+    transition:
+        border-color 200ms ease,
+        translate 240ms var(--lp-ease, ease);
+}
+.lp-card:hover,
+.lp-step:hover {
+    border-color: #c4d6f2;
+    translate: 0 -4px;
+}
+.lp-card .lp-icon,
+.lp-step .lp-icon {
+    transition:
+        background-color 200ms ease,
+        color 200ms ease;
+}
+.lp-card:hover .lp-icon,
+.lp-step:hover .lp-icon {
+    background: var(--lp-action);
+    color: #fff;
+}
+.lp-button svg {
+    transition: translate 200ms ease;
+}
+.lp-button:hover svg {
+    translate: 3px 0;
+}
+
+/* ---------- Motion (only when the user hasn't asked for reduced motion) ---------- */
+@media (prefers-reduced-motion: no-preference) {
+    .lp {
+        --lp-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+    }
+
+    /* Hero entrance on load */
+    .lp-eyebrow,
+    .lp-hero .lp-line,
+    .lp-lede,
+    .lp-actions,
+    .lp-note {
+        animation: lp-rise 800ms var(--lp-ease) both;
+    }
+    .lp-eyebrow {
+        animation-delay: 60ms;
+    }
+    .lp-hero .lp-line:nth-child(1) {
+        animation-delay: 140ms;
+    }
+    .lp-hero .lp-line:nth-child(2) {
+        animation-delay: 240ms;
+    }
+    .lp-lede {
+        animation-delay: 360ms;
+    }
+    .lp-actions {
+        animation-delay: 460ms;
+    }
+    .lp-note {
+        animation-delay: 560ms;
+    }
+    .lp-watch-wrap {
+        animation: lp-rise-far 1000ms var(--lp-ease) 300ms both;
+    }
+    .lp-watch {
+        animation: lp-float 6s ease-in-out 1.4s infinite;
+    }
+    .lp-trace-wrap {
+        animation: lp-slide-in 900ms var(--lp-ease) 650ms both;
+    }
+    /* Agent activity ticks through its stages, then waits for the watch */
+    .lp-trace li {
+        animation: lp-tick 500ms var(--lp-ease) both;
+        animation-delay: calc(1100ms + var(--i, 0) * 380ms);
+    }
+    .lp-trace-dot.wait {
+        animation: lp-pulse-dot 1.8s ease-out 2.8s infinite;
+    }
+    .lp-watch-confirm {
+        animation: lp-pulse-ring 2.4s ease-out 2.8s infinite;
+    }
+
+    /* Hero background: rings fade in, ripples spread outward, dashed ring turns slowly */
+    .lp-rings {
+        animation: lp-fade-in 1400ms ease 500ms both;
+    }
+    .lp-rings .lp-ripple {
+        animation: lp-ripple 5s cubic-bezier(0.2, 0.6, 0.3, 1) 1.6s infinite;
+    }
+    .lp-rings .lp-ripple + .lp-ripple {
+        animation-delay: 4.1s;
+    }
+    .lp-rings span:nth-child(3) {
+        animation: lp-spin 90s linear infinite;
+    }
+    .lp-hero::before {
+        animation: lp-fade-in 1600ms ease both;
+    }
+
+    /* Parallax on wide layouts: watch drifts up, activity card drifts down */
+    @media (min-width: 1001px) {
+        .lp-hero::before {
+            translate: 0 calc(var(--lp-scroll, 0) * 0.12px);
+        }
+        .lp-watch-wrap {
+            translate: 0 calc(var(--lp-scroll, 0) * -0.09px);
+        }
+        .lp-trace-wrap {
+            translate: 0 calc(var(--lp-scroll, 0) * 0.05px);
+        }
+    }
+
+    /* Scroll reveal: elements start lowered and transparent until in view */
+    .lp [data-reveal] {
+        opacity: 0;
+        transform: translateY(28px);
+        transition:
+            opacity 700ms var(--lp-ease),
+            transform 800ms var(--lp-ease),
+            border-color 200ms ease,
+            translate 240ms var(--lp-ease);
+        transition-delay:
+            calc(var(--i, 0) * 110ms),
+            calc(var(--i, 0) * 110ms),
+            0s,
+            0s;
+    }
+    .lp [data-reveal-from="left"] {
+        transform: translateX(-36px);
+    }
+    .lp [data-reveal-from="scale"] {
+        transform: translateY(24px) scale(0.96);
+    }
+    .lp [data-reveal].is-visible {
+        opacity: 1;
+        transform: none;
+    }
+
+    /* Section headings: kicker, title and copy arrive one after another */
+    .lp-section-head > * {
+        opacity: 0;
+        transform: translateY(16px);
+        transition:
+            opacity 600ms var(--lp-ease),
+            transform 700ms var(--lp-ease);
+    }
+    .lp-section-head > :nth-child(2) {
+        transition-delay: 90ms;
+    }
+    .lp-section-head > :nth-child(3) {
+        transition-delay: 180ms;
+    }
+    .lp-section-head.is-visible > * {
+        opacity: 1;
+        transform: none;
+    }
+
+    /* Steps: the list itself stays put; cards slide in left to right */
+    .lp .lp-steps[data-reveal] {
+        opacity: 1;
+        transform: none;
+    }
+    .lp-steps .lp-step {
+        opacity: 0;
+        transform: translateX(-24px);
+        transition:
+            opacity 600ms var(--lp-ease),
+            transform 700ms var(--lp-ease),
+            border-color 200ms ease,
+            translate 240ms var(--lp-ease);
+        transition-delay:
+            calc(var(--i, 0) * 140ms),
+            calc(var(--i, 0) * 140ms),
+            0s,
+            0s;
+    }
+    .lp-steps.is-visible .lp-step {
+        opacity: 1;
+        transform: none;
+    }
+    /* Track: line draws left to right, nodes pop in as it passes them,
+       then a dot loops along it and lights each node on arrival. */
+    .lp .lp-rail[data-reveal] {
+        opacity: 1;
+        transform: none;
+    }
+    .lp-rail-fill {
+        transform: scaleX(0);
+        transition: transform 1200ms cubic-bezier(0.45, 0, 0.25, 1) 200ms;
+    }
+    .lp-rail.is-visible .lp-rail-fill {
+        transform: scaleX(1);
+    }
+    .lp-rail-node {
+        opacity: 0;
+    }
+    .lp-rail.is-visible .lp-rail-node {
+        animation:
+            lp-pop-in 500ms var(--lp-ease) both,
+            lp-node-glow 3.75s linear infinite;
+        animation-delay:
+            calc(200ms + var(--i, 0) * 400ms),
+            calc(1.6s + var(--i, 0) * 1s);
+    }
+    .lp-rail.is-visible .lp-rail-runner {
+        animation: lp-run 3.75s linear 1.6s infinite;
+    }
+    .lp-steps.is-visible .lp-step .lp-icon {
+        animation: lp-pop 600ms var(--lp-ease) both;
+        animation-delay: calc(200ms + var(--i, 0) * 140ms);
+    }
+
+    /* Features: grid drifts slowly; each corner icon slides in after its card */
+    .lp-features::before {
+        animation: lp-grid-drift 24s linear infinite;
+    }
+    .lp-card .lp-card-mark {
+        transform: translate(40px, 40px) rotate(12deg);
+        transition:
+            transform 1100ms var(--lp-ease),
+            opacity 300ms ease,
+            rotate 500ms var(--lp-ease),
+            translate 500ms var(--lp-ease);
+        transition-delay: calc(250ms + var(--i, 0) * 110ms), 0s, 0s, 0s;
+    }
+    .lp-card.is-visible .lp-card-mark {
+        transform: none;
+    }
+
+    /* Safeguards: rows follow the card in, each check pops */
+    .lp-safeguards li {
+        opacity: 0;
+        transform: translateX(16px);
+        transition:
+            opacity 500ms var(--lp-ease),
+            transform 600ms var(--lp-ease);
+        transition-delay: calc(200ms + var(--i, 0) * 120ms);
+    }
+    .lp-safeguards.is-visible li {
+        opacity: 1;
+        transform: none;
+    }
+    .lp-safeguards.is-visible li svg {
+        animation: lp-pop 500ms var(--lp-ease) both;
+        animation-delay: calc(320ms + var(--i, 0) * 120ms);
+    }
+}
+
+@keyframes lp-rise {
+    from {
+        opacity: 0;
+        transform: translateY(18px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+@keyframes lp-rise-far {
+    from {
+        opacity: 0;
+        transform: translateY(48px) scale(0.96);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+@keyframes lp-slide-in {
+    from {
+        opacity: 0;
+        transform: translateX(-32px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+@keyframes lp-pop-in {
+    0% {
+        opacity: 0;
+        transform: scale(0.6);
+    }
+    60% {
+        opacity: 1;
+        transform: scale(1.1);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+/* 3.75s loop: the dot travels for 80% (1s per segment), then rests */
+@keyframes lp-run {
+    0% {
+        opacity: 0;
+        transform: translateX(0);
+    }
+    4%,
+    76% {
+        opacity: 1;
+    }
+    80%,
+    100% {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+}
+@keyframes lp-node-glow {
+    0% {
+        background: var(--lp-action);
+        border-color: var(--lp-action);
+        color: #fff;
+        box-shadow: 0 0 0 6px rgba(8, 102, 230, 0.16);
+    }
+    20%,
+    100% {
+        background: var(--lp-surface);
+        border-color: #9ec0f6;
+        color: var(--lp-action);
+        box-shadow: 0 0 0 0 rgba(8, 102, 230, 0);
+    }
+}
+@keyframes lp-grid-drift {
+    from {
+        background-position: center center;
+    }
+    to {
+        background-position: calc(50% + 48px) calc(50% + 48px);
+    }
+}
+@keyframes lp-fade-in {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+@keyframes lp-ripple {
+    0% {
+        opacity: 0;
+        transform: scale(1);
+    }
+    12% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+        transform: scale(2.2);
+    }
+}
+@keyframes lp-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+@keyframes lp-float {
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-8px);
+    }
+}
+@keyframes lp-tick {
+    from {
+        opacity: 0;
+        transform: translateX(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+@keyframes lp-pop {
+    0% {
+        transform: scale(0.6);
+    }
+    60% {
+        transform: scale(1.12);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+@keyframes lp-pulse-dot {
+    0% {
+        box-shadow: 0 0 0 0 rgba(148, 96, 22, 0.45);
+    }
+    100% {
+        box-shadow: 0 0 0 7px rgba(148, 96, 22, 0);
+    }
+}
+@keyframes lp-pulse-ring {
+    0% {
+        box-shadow: 0 0 0 0 rgba(8, 102, 230, 0.55);
+    }
+    70%,
+    100% {
+        box-shadow: 0 0 0 10px rgba(8, 102, 230, 0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html:has(.lp) {
+        scroll-behavior: auto;
+    }
+    .lp *,
+    .lp *::before,
+    .lp *::after {
+        transition: none !important;
+    }
+    .lp-button:active {
+        transform: none;
+    }
+}
+@media (prefers-reduced-transparency: reduce) {
+    .lp-nav {
+        background: var(--lp-surface);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+}
+@media (prefers-contrast: more) {
+    .lp {
+        --lp-border: #9aa4b2;
+        --lp-muted: #3d4757;
+    }
+}
