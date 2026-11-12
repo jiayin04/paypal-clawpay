@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { SupabaseClient, Session } from "@supabase/supabase-js";
 import {
     Activity,
+    ArrowLeft,
     ArrowDown,
     BadgeCheck,
     ArrowRight,
@@ -622,11 +623,7 @@ function App() {
             <aside className={`sidebar ${menu ? "open" : ""}`}>
                 <a
                     className="brand"
-                    href="#overview"
-                    onClick={(e) => {
-                        e.preventDefault();
-                        navigate("overview");
-                    }}
+                    href="/"
                 >
                     <img src="/favicon.svg" alt="" />
                     <span>ClawPay</span>
@@ -736,6 +733,10 @@ function App() {
                     </div>
                 </header>
                 <main id="main" tabIndex={-1}>
+                    <a className="website-link" href="/">
+                        <ArrowLeft size={16} aria-hidden="true" />
+                        Back to website
+                    </a>
                     <div className="page-heading">
                         <div>
                             <h1>

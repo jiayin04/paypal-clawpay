@@ -292,6 +292,19 @@ time,
     color: #3f4857;
     font-weight: 550;
 }
+.website-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    margin-bottom: 12px;
+    color: var(--blue);
+    font-size: 13px;
+    font-weight: 550;
+}
+.website-link:hover {
+    text-decoration: underline;
+}
 .topbar-right {
     display: flex;
     gap: 20px;

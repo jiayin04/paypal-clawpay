@@ -8,6 +8,20 @@ const context = await browser.newContext({
 const page = await context.newPage();
 const errors = [];
 page.on("pageerror", (error) => errors.push(error.message));
+// Enter through the landing page and return through both the UI and browser history.
+await page.goto("http://127.0.0.1:8787/");
+await page.getByRole("banner").getByRole("link", { name: "Open the demo", exact: true }).click();
+await page.getByRole("heading", { name: "Overview", exact: true }).waitFor();
+await page.getByRole("link", { name: "Back to website", exact: true }).click();
+await page.locator(".lp h1").waitFor();
+assert.equal(new URL(page.url()).pathname, "/");
+await page.goBack();
+await page.getByRole("heading", { name: "Overview", exact: true }).waitFor();
+await page.goForward();
+await page.locator(".lp h1").waitFor();
+await page.goto("http://127.0.0.1:8787/dashboard");
+await page.getByRole("link", { name: "ClawPay", exact: true }).click();
+await page.locator(".lp h1").waitFor();
 await page.goto("http://127.0.0.1:8787/dashboard");
 await page.getByRole("heading", { name: "Overview", exact: true }).waitFor();
 await page.screenshot({
@@ -81,6 +95,12 @@ await page.screenshot({
 });
 for (const width of [390, 768, 1024, 1280, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
+    if (width === 390) {
+        await page.getByRole("link", { name: "Back to website", exact: true }).click();
+        await page.locator(".lp h1").waitFor();
+        await page.getByRole("banner").getByRole("link", { name: "Open the demo", exact: true }).click();
+        await page.getByRole("heading", { name: "Overview", exact: true }).waitFor();
+    }
     const nav = page.getByRole("navigation", {
         name: width <= 760 ? "Mobile navigation" : "Main navigation",
         exact: true,
