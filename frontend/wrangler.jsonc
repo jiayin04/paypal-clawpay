@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json.schemastore.org/wrangler.json",
+  "name": "clawpay-dashboard",
+  "main": "dist/server/index.js",
+  "compatibility_date": "2026-11-12",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "no_bundle": true,
+  "keep_vars": true,
+  "observability": { "enabled": true },
+  "build": { "command": "npm run build" }
+}

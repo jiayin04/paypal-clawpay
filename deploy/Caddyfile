@@ -1,0 +1,10 @@
+{$CLAWPAY_API_HOST:localhost} {
+    @private path /health/ready /metrics /docs /redoc /openapi.json
+    respond @private 404
+
+    reverse_proxy 127.0.0.1:{$CLAWPAY_API_PORT:18000} {
+        # NDJSON progress and PCM audio must reach the Watch without proxy buffering.
+        flush_interval -1
+        header_up X-Forwarded-For {remote_host}
+    }
+}

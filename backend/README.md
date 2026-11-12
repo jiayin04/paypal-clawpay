@@ -32,12 +32,15 @@ Registration returns two tokens once: `cpd_` for MCP/device REST in private NVS 
 
 **If you already dropped the ClawPay tables:** run [supabase/schema.sql](supabase/schema.sql) first, then [supabase/seed.sql](supabase/seed.sql) in the Supabase SQL Editor as postgres. See the [rebuild guide](docs/database-rebuild.md); this applies the full current schema and preserves Supabase Auth. Re-register devices and relink PayPal afterward.
 
-**For an existing intact schema:** never edit the initial applied migration. Run the migration workflow in [setup A3](docs/setup.md#a3-apply-migrations-to-the-hosted-supabase-project--works-now): link, inspect migration history, repair the initial history entry only if needed, and review a dry run before pushing. Exactly four new files follow `20261024133807_initial_schema.sql`:
+**For an existing intact schema:** never edit the initial applied migration. Run the migration workflow in [setup A3](docs/setup.md#a3-apply-migrations-to-the-hosted-supabase-project--works-now): link, inspect migration history, repair the initial history entry only if needed, and review a dry run before pushing. Seven migrations follow `20261024133807_initial_schema.sql`:
 
 1. `20261025090000_phase2_hardening.sql`
 2. `20261025090100_phase2_devices_orders_a2a.sql`
 3. `20261025090200_phase3_approvals_payments.sql`
 4. `20261025090300_phase4_realtime.sql`
+5. `20261030090000_channel3_merchant.sql`
+6. `20261112090000_agent_passports.sql`
+7. `20261112090100_atomic_passport_orders.sql`
 
 RLS scopes reads to the user; explicit column grants hide tokens, provider references, raw payloads and audit details. Multi-row changes run in service-role-only RPCs with ordered row locks and one deadlock retry. `reserve_spending(..., p_timezone)` derives the spending day in SQL. Only `orders` is published to Realtime. The other dashboard data is polled. Python tests mock all external services; pgTAP files are provided but were not executed during this implementation. No hosted migrations were pushed.
 

@@ -1,0 +1,100 @@
+name: clawpay
+
+x-runtime: &runtime
+  image: ${CLAWPAY_BACKEND_IMAGE:-clawpay-backend:local}
+  # Linux VPS only. The app deliberately permits private HTTP agent calls only on loopback.
+  network_mode: host
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp:size=32m,noexec,nosuid,nodev
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+
+services:
+  paypal-agent:
+    <<: *runtime
+    env_file:
+      - path: .secrets/paypal.env
+        format: raw
+    environment:
+      APP_ENV: production
+      PAYPAL_ENV: sandbox
+      CLAWPAY_HEALTH_PORT: ${CLAWPAY_AGENT_PORT:-18201}
+    command: [python, -m, uvicorn, --factory, "app.paypal_agent.app:paypal_agent_app", --host, "127.0.0.1", --port, "${CLAWPAY_AGENT_PORT:-18201}", --workers, "1", --no-access-log]
+    mem_limit: 256m
+    cpus: 0.25
+    stop_grace_period: 30s
+    healthcheck:
+      test: [CMD, python, -c, "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ['CLAWPAY_HEALTH_PORT']+'/health',timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  api:
+    <<: *runtime
+    env_file:
+      - path: .secrets/api.env
+        format: raw
+    environment:
+      APP_ENV: production
+      LOG_FORMAT: json
+      PAYPAL_ENV: sandbox
+      PAYPAL_AGENT_ENDPOINT: http://127.0.0.1:${CLAWPAY_AGENT_PORT:-18201}/a2a
+      # Provider credentials belong to the agent, never the API container.
+      PAYPAL_CLIENT_ID: ""
+      PAYPAL_CLIENT_SECRET: ""
+      MCP_ENABLED: "true"
+      MCP_PATH_TOKEN_ENABLED: "false"
+      # Only use this setting behind the supplied loopback-only Caddy configuration.
+      CLIENT_IP_HEADER: x-forwarded-for-last
+      CLAWPAY_HEALTH_PORT: ${CLAWPAY_API_PORT:-18000}
+    command: [python, -m, uvicorn, "app.main:app", --host, "127.0.0.1", --port, "${CLAWPAY_API_PORT:-18000}", --workers, "1", --no-access-log]
+    depends_on:
+      paypal-agent:
+        condition: service_healthy
+    mem_limit: 512m
+    cpus: 0.75
+    stop_grace_period: 60s
+    healthcheck:
+      test: [CMD, python, -c, "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ['CLAWPAY_HEALTH_PORT']+'/health',timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  # Opt in only if ports 80/443 are available. Otherwise configure the existing proxy.
+  ingress:
+    image: caddy:2-alpine
+    profiles: [ingress]
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      CLAWPAY_API_HOST: ${CLAWPAY_API_HOST:-localhost}
+      CLAWPAY_API_PORT: ${CLAWPAY_API_PORT:-18000}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    cpus: 0.15
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+volumes:
+  caddy-data:
+  caddy-config:
