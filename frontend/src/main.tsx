@@ -5,6 +5,7 @@ import type { SupabaseClient, Session } from "@supabase/supabase-js";
 import {
     Activity,
     ArrowDown,
+    BadgeCheck,
     ArrowRight,
     ArrowUpRight,
     Check,
@@ -38,6 +39,7 @@ import {
     statusLabel,
     eventTitle,
     eventDetail,
+    passportReason,
 } from "./data";
 import type {
     Snapshot,
@@ -62,6 +64,8 @@ const empty: Snapshot = {
     conversations: [],
     wallets: [],
     spending: null,
+    passports: [],
+    receipts: [],
 };
 const time = (date: string) =>
     new Date(date).toLocaleTimeString(undefined, {
@@ -302,6 +306,8 @@ function App() {
             "conversations?limit=50",
             "payment-methods",
             "spending/summary",
+            "delegations",
+            "delegations/receipts?limit=20",
         ];
         const results = await Promise.allSettled(
             paths.map((path) => api(path)),
@@ -314,6 +320,8 @@ function App() {
             "conversations",
             "wallets",
             "spending",
+            "passports",
+            "receipts",
         ] as const;
         const bodyKeys = [
             "orders",
@@ -322,6 +330,8 @@ function App() {
             "conversations",
             "payment_methods",
             "",
+            "delegations",
+            "receipts",
         ];
         setSnapshot((previous) => {
             const next = { ...previous };
@@ -1383,6 +1393,116 @@ function App() {
                                         Sandbox. Channel3 provides the catalog;
                                         real retailer fulfillment is not
                                         connected.
+                                    </p>
+                                </div>
+                            </section>
+                            <section className="panel passport-panel">
+                                <div className="section-heading">
+                                    <div>
+                                        <h2>Agent passports</h2>
+                                        <p>
+                                            What each device may buy for you,
+                                            signed by ClawPay.
+                                        </p>
+                                    </div>
+                                    <BadgeCheck size={20} />
+                                </div>
+                                {!known("passports") ? (
+                                    unavailable("passports")
+                                ) : data.passports.length ? (
+                                    data.passports.map((passport) => (
+                                        <div
+                                            className="passport-row"
+                                            key={passport.id}
+                                        >
+                                            <div>
+                                                <h3>
+                                                    {data.devices.find(
+                                                        (d) =>
+                                                            d.id ===
+                                                            passport.device_id,
+                                                    )?.device_name ||
+                                                        "Agent device"}
+                                                </h3>
+                                                <p>
+                                                    Up to{" "}
+                                                    {money(
+                                                        passport.max_order_minor,
+                                                        passport.currency,
+                                                    )}{" "}
+                                                    per order ·{" "}
+                                                    {passport.merchants
+                                                        .map(human)
+                                                        .join(", ")}
+                                                </p>
+                                                <span className="muted">
+                                                    {passport.status ===
+                                                    "revoked"
+                                                        ? `Revoked ${dateTime(passport.revoked_at || passport.created_at)}`
+                                                        : `Expires ${dateTime(passport.expires_at)}`}{" "}
+                                                    · Key {passport.key_id}
+                                                </span>
+                                            </div>
+                                            <Status value={passport.status} />
+                                        </div>
+                                    ))
+                                ) : (
+                                    <Empty title="No passports issued">
+                                        Devices without a passport follow your
+                                        account spending limits only.
+                                    </Empty>
+                                )}
+                                <div className="passport-decisions">
+                                    <h3>Recent decisions</h3>
+                                    {!known("receipts") ? (
+                                        unavailable("decisions")
+                                    ) : data.receipts.length ? (
+                                        <ul>
+                                            {data.receipts.map((receipt) => (
+                                                <li key={receipt.id}>
+                                                    <span
+                                                        className={`status ${receipt.decision === "allowed" ? "good" : "warn"}`}
+                                                    >
+                                                        <span />
+                                                        {receipt.decision ===
+                                                        "allowed"
+                                                            ? "Allowed"
+                                                            : "Refused"}
+                                                    </span>
+                                                    <span>
+                                                        {human(
+                                                            receipt.merchant_code,
+                                                        )}
+                                                        {receipt.amount_minor
+                                                            ? ` · ${money(receipt.amount_minor, receipt.currency)}`
+                                                            : ""}
+                                                    </span>
+                                                    <span className="muted">
+                                                        {passportReason(
+                                                            receipt.reason,
+                                                        )}{" "}
+                                                        ·{" "}
+                                                        {time(
+                                                            receipt.created_at,
+                                                        )}
+                                                    </span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    ) : (
+                                        <p className="muted">
+                                            No passport decisions yet.
+                                        </p>
+                                    )}
+                                </div>
+                                <div className="security-note">
+                                    <ShieldCheck size={19} />
+                                    <p>
+                                        Every decision is a signed receipt you
+                                        can verify with ClawPay’s public key.
+                                        Passports are issued and revoked through
+                                        the ClawPay API, not this read-only
+                                        dashboard.
                                     </p>
                                 </div>
                             </section>

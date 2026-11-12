@@ -30,6 +30,7 @@ from app.repositories.supabase.orders import SupabaseOrderRepository
 from app.repositories.supabase.payment_methods import SupabasePaymentMethodRepository
 from app.repositories.supabase.payments import SupabasePaymentRepository
 from app.repositories.supabase.spending import SupabaseSpendingRepository
+from app.repositories.supabase.passports import SupabasePassportRepository
 from app.repositories.supabase.webhooks import SupabaseWebhookRepository
 from app.repositories.user_scoped import make_user_reader_factory
 from app.services.approval_service import ApprovalService
@@ -40,6 +41,7 @@ from app.services.device_service import DeviceService
 from app.services.llm_proxy_service import LLMProxyService
 from app.services.merchant_service import MerchantService
 from app.services.order_service import OrderService
+from app.services.passport_service import PassportService
 from app.services.payment_method_service import PaymentMethodService
 from app.services.payment_service import PaymentService
 from app.services.reconciliation_service import ReconciliationService
@@ -85,6 +87,7 @@ class Services:
     llm: LLMProxyService
     tts: TTSService
     stt: STTService
+    passports: PassportService
 
 
 def _lazy_client_provider(settings: Settings) -> Callable[[], Client]:
@@ -116,6 +119,7 @@ def supabase_repositories(settings: Settings) -> Repositories:
         approvals=SupabaseApprovalRepository(provider),
         payments=SupabasePaymentRepository(provider),
         webhooks=SupabaseWebhookRepository(provider),
+        passports=SupabasePassportRepository(provider),
     )
 
 
@@ -171,6 +175,7 @@ def build_services(
         paypal=paypal_gateway,
         audit=audit,
     )
+    passports = PassportService(settings, clock, repos.passports)
     return Services(
         settings=settings,
         clock=clock,
@@ -182,7 +187,7 @@ def build_services(
         merchants=merchants,
         orders=OrderService(
             settings, clock, repos.orders, repos.merchants, repos.payment_methods, spending, merchants,
-            payment_repo=repos.payments, payment_service=payments,
+            payment_repo=repos.payments, payment_service=payments, passports=passports,
         ),
         spending=spending,
         conversations=ConversationService(settings, clock, repos.conversations),
@@ -198,4 +203,5 @@ def build_services(
         llm=LLMProxyService(settings,clock,llm_client or httpx.AsyncClient(timeout=settings.llm_proxy_timeout_seconds)),
         tts=TTSService(settings, clock, tts_client or httpx.AsyncClient(timeout=settings.fish_audio_timeout_seconds)),
         stt=STTService(settings, clock, stt_client or httpx.AsyncClient(timeout=settings.fish_audio_timeout_seconds)),
+        passports=passports,
     )

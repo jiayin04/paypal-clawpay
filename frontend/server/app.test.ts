@@ -60,6 +60,41 @@ test("read-only proxy preserves owner auth and query, strips untrusted headers, 
     ]);
     assert.equal(calls.length, 1);
 });
+test("agent passport reads are proxied; issuing and revoking are not", async () => {
+    const urls: string[] = [];
+    const app = createApp(
+        {
+            apiOrigin: "http://localhost:8000",
+            supabaseUrl: "https://example.supabase.co",
+            supabaseKey: "public-key",
+        },
+        (async (url) => {
+            urls.push(String(url));
+            return Response.json({ delegations: [] });
+        }) as typeof fetch,
+    );
+    const headers = { Authorization: "Bearer user.jwt" };
+    for (const path of ["/api/v1/delegations", "/api/v1/delegations/receipts?limit=20"])
+        assert.equal((await app.request(path, { headers })).status, 200);
+    assert.deepEqual(urls, [
+        "http://localhost:8000/api/v1/delegations",
+        "http://localhost:8000/api/v1/delegations/receipts?limit=20",
+    ]);
+    assert.equal(
+        (await app.request("/api/v1/delegations", { method: "POST", headers })).status,
+        405,
+    );
+    assert.equal(
+        (
+            await app.request("/api/v1/delegations/0b9d6a52-1d0e-4b8e-8f43-2c1f7d0e9a10", {
+                method: "DELETE",
+                headers,
+            })
+        ).status,
+        405,
+    );
+    assert.equal((await app.request("/api/v1/delegations/other", { headers })).status, 404);
+});
 test("backend errors remain visible and connection errors are recoverable", async () => {
     const config = {
         apiOrigin: "http://localhost:8000",

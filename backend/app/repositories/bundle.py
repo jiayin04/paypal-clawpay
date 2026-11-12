@@ -10,6 +10,7 @@ from app.repositories.ports.events import (
 )
 from app.repositories.ports.merchants import MerchantRepository
 from app.repositories.ports.orders import OrderRepository
+from app.repositories.ports.passports import PassportRepository
 from app.repositories.ports.payment_methods import PaymentMethodRepository
 from app.repositories.ports.payments import PaymentRepository
 from app.repositories.ports.spending import SpendingRepository
@@ -29,3 +30,4 @@ class Repositories:
     approvals: ApprovalRepository
     payments: PaymentRepository
     webhooks: WebhookRepository
+    passports: PassportRepository

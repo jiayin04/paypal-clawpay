@@ -67,6 +67,31 @@ export type Spending = {
     day?: string;
     timezone?: string;
 };
+// Agent passport: a signed, revocable grant for one agent device.
+export type Passport = {
+    id: string;
+    device_id: string;
+    status: string;
+    merchants: string[];
+    max_order_minor: number;
+    currency: string;
+    expires_at: string;
+    revoked_at?: string | null;
+    created_at: string;
+    key_id: string;
+};
+export type PassportReceipt = {
+    id: string;
+    delegation_id?: string | null;
+    device_id: string;
+    order_id?: string | null;
+    decision: "allowed" | "denied";
+    reason: string;
+    merchant_code: string;
+    amount_minor?: number | null;
+    currency: string;
+    created_at: string;
+};
 export type Snapshot = {
     orders: Order[];
     events: Event[];
@@ -74,6 +99,8 @@ export type Snapshot = {
     conversations: Conversation[];
     wallets: Wallet[];
     spending: Spending | null;
+    passports: Passport[];
+    receipts: PassportReceipt[];
 };
 const ago = (minutes: number) =>
     new Date(Date.now() - minutes * 60000).toISOString();
@@ -216,6 +243,46 @@ export const demo: Snapshot = {
             provider: "paypal",
             status: "active",
             payer_email_masked: "c••••@example.com",
+        },
+    ],
+    passports: [
+        {
+            id: "passport-demo",
+            device_id: "watch-demo",
+            status: "active",
+            merchants: ["channel3", "grocer"],
+            max_order_minor: 5000,
+            currency: "USD",
+            expires_at: new Date(Date.now() + 6 * 86400000).toISOString(),
+            revoked_at: null,
+            created_at: ago(1440),
+            key_id: "3f9c1a7d2e5b8c40",
+        },
+    ],
+    receipts: [
+        {
+            id: "receipt-demo-1",
+            delegation_id: "passport-demo",
+            device_id: "watch-demo",
+            order_id: "order-demo-1",
+            decision: "allowed",
+            reason: "within_delegation",
+            merchant_code: "channel3",
+            amount_minor: 2600,
+            currency: "USD",
+            created_at: ago(9),
+        },
+        {
+            id: "receipt-demo-2",
+            delegation_id: "passport-demo",
+            device_id: "watch-demo",
+            order_id: null,
+            decision: "denied",
+            reason: "delegation_limit_exceeded",
+            merchant_code: "channel3",
+            amount_minor: 8900,
+            currency: "USD",
+            created_at: ago(31),
         },
     ],
     spending: {
@@ -366,6 +433,16 @@ export const money = (minor: number, currency = "USD") =>
     );
 export const human = (value: string) =>
     value.replaceAll(/[_.-]/g, " ").replace(/\b\w/g, (x) => x.toUpperCase());
+export const passportReason = (reason: string) =>
+    ({
+        within_delegation: "Within passport",
+        no_delegation: "No passport",
+        delegation_revoked: "Passport revoked",
+        delegation_expired: "Passport expired",
+        merchant_not_delegated: "Shop not allowed",
+        currency_not_delegated: "Currency not allowed",
+        delegation_limit_exceeded: "Over per-order limit",
+    })[reason] || human(reason);
 export const statusLabel = (status: string) =>
     ({
         awaiting_device_approval: "Needs approval",

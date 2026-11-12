@@ -27,6 +27,7 @@ from app.repositories.ports.payment_methods import PaymentMethodRepository
 from app.repositories.ports.payments import PaymentRepository
 from app.services.context import DeviceContext
 from app.services.errors import ToolError
+from app.services.passport_service import PassportService
 from app.services.merchant_service import A2ALog, MerchantFailure, MerchantService
 from app.services.spending_service import SpendingService
 
@@ -83,6 +84,7 @@ class OrderService:
         merchant_service: MerchantService,
         payment_repo: PaymentRepository | None = None,
         payment_service: object | None = None,  # PaymentService – imported lazily to avoid cycle
+        passports: PassportService | None = None,
     ) -> None:
         self._settings = settings
         self._clock = clock
@@ -93,6 +95,7 @@ class OrderService:
         self._merchant_service = merchant_service
         self._payment_repo = payment_repo
         self._payment_service = payment_service
+        self._passports = passports
 
     # -- create_order ----------------------------------------------------------------
 
@@ -115,6 +118,13 @@ class OrderService:
         merchant = await self._merchants.get_active_by_code(merchant_id)
         if merchant is None:
             raise ToolError("merchant_unavailable")
+
+        # Agent passport: scope check before quoting, so a refused merchant costs no quote call.
+        grant = (
+            await self._passports.authorize_merchant(device, merchant_id, currency)
+            if self._passports is not None
+            else None
+        )
 
         if settings.order_require_payment_method and not await self._payment_methods.has_active(
             device.user_id
@@ -140,6 +150,8 @@ class OrderService:
             total = quote.total_minor
             if total > settings.phone_approval_threshold_minor:
                 raise ToolError("phone_approval_unavailable")
+            if self._passports is not None:
+                await self._passports.authorize_amount(device, grant, merchant_id, total, currency)
 
             summary = await self._spending.summary(device.user_id)
             used = summary.committed_minor + summary.reserved_minor
@@ -193,6 +205,10 @@ class OrderService:
 
         order_id = str(result.data["order_id"])
         background.add_task(self._merchant_service.write_log, log, order_id)
+        if self._passports is not None and grant is not None and not result.data.get("deduplicated"):
+            await self._passports.record_allowed(
+                device, grant, order_id=order_id, merchant=merchant_id, amount_minor=total, currency=currency
+            )
 
         expires_at = quote.expires_at
         out_total = total

@@ -128,6 +128,7 @@ ERROR_MESSAGES: dict[str, str] = {
     "phone_approval_unavailable": (
         "Orders above RM100 need phone approval, which is not available yet."
     ),
+    "delegation_denied": "This device's agent passport does not allow that order.",
     "not_found": "Order not found.",
     "internal_error": "Something went wrong. Try again later.",
 }

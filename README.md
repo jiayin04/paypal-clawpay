@@ -16,6 +16,10 @@ watch / ESP-Claw device --> backend --> merchant agents (mock catalogs, Channel3
 dashboard ---- read-only ------/   \--> Supabase
 ```
 
+## Agent passports
+
+Each agent device can carry a signed, revocable passport from its owner: which shops it may order from, the largest single order, and an expiry. The backend refuses any order outside it and keeps a signed receipt of every allowed or refused decision, which the dashboard's Devices page shows. Anyone can verify passports and receipts with the public key at `/.well-known/agent-passport`. Setup, API and limits: [backend/README.md](backend/README.md#agent-passports-lite).
+
 ## Run locally
 
 Start the backend first. The dashboard reads its settings from `backend/.env`.

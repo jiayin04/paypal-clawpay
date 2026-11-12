@@ -28,6 +28,7 @@ from tests.fakes.repositories.devices import FakeDeviceRepository
 from tests.fakes.repositories.events import FakeConversationRepository, FakeInsertRepository
 from tests.fakes.repositories.merchants import FakeMerchantRepository
 from tests.fakes.repositories.orders import FakeOrderRepository
+from tests.fakes.repositories.passports import FakePassportRepository
 from tests.fakes.repositories.payment_methods import FakePaymentMethodRepository
 from tests.fakes.repositories.payments import FakePaymentRepository
 from tests.fakes.repositories.spending import FakeSpendingRepository
@@ -68,6 +69,8 @@ class InMemoryStore:
         self.order_items: list[dict[str, Any]] = []
         self.spending_records: list[dict[str, Any]] = []
         self.payment_methods: list[dict[str, Any]] = []
+        self.delegations: list[dict[str, Any]] = []
+        self.agent_receipts: list[dict[str, Any]] = []
         self.conversations: dict[str, dict[str, Any]] = {}
         self.conversation_events: list[dict[str, Any]] = []
         self.a2a_messages: list[dict[str, Any]] = []
@@ -274,6 +277,7 @@ class InMemoryStore:
             approvals=FakeApprovalRepository(self),
             payments=FakePaymentRepository(self),
             webhooks=FakeWebhookRepository(self),
+            passports=FakePassportRepository(self),
         )
 
     def user_reader_factory(self) -> Callable[[str], Any]:
