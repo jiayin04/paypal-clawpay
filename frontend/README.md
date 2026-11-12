@@ -34,6 +34,16 @@ All fixture data is labeled synthetic. Voice to checkout, budget protection, and
 
 ## Hosted preview
 
+The public site is https://clawpay.pages.dev/; the dashboard is https://clawpay.pages.dev/dashboard. To publish an update to the existing Cloudflare Pages project:
+
+```sh
+cd frontend
+npm ci
+npm run deploy:pages
+```
+
+This builds the same Hono Worker into `dist-pages/_worker.js` using Pages advanced mode. The Worker serves both the SPA and `/api/*`, retaining the read-only proxy and security headers. The Pages configuration lives in `pages/wrangler.jsonc`; generated output is ignored. The original Workers URL remains available as a separate deployment and is not updated by this command.
+
 `npm run build` also produces `dist/server/index.js`, an ESM Hono Worker containing only built public assets. `.openai/hosting.json` stores the private Sites project identity. There are no secrets in the artifact. Runtime settings for hosted live mode are `CLAWPAY_API_ORIGIN` (stable HTTPS backend), `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`. Without these, the hosted site offers demo mode and explains that live mode is not configured. No local loopback backend is reachable from hosting.
 
 ## Verify

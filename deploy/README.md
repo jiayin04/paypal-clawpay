@@ -9,7 +9,7 @@ Apply these incrementally using your normal Supabase migration workflow; never r
 
 | Component | Location | Deployment |
 | --- | --- | --- |
-| Frontend and read-only Hono proxy | Cloudflare Worker | Existing Vite/Worker build, public demo plus owner sign-in |
+| Frontend and read-only Hono proxy | Cloudflare Pages | Existing Vite/Hono build in Pages advanced mode, public demo plus owner sign-in |
 | FastAPI backend | Existing Ubuntu VPS | One process, image built off the VPS |
 | PayPal A2A agent | Same VPS, loopback only | Separate process and provider credentials |
 | Database | Existing hosted Supabase | Keep the current data and device identities |
@@ -19,7 +19,7 @@ The Watch is a native app, not a VPS service. LLM, speech and catalog work use r
 
 ## Current rollout status (12 November 2026)
 
-- Public frontend: https://clawpay-dashboard.charleshor0311.workers.dev (demo mode; live backend bindings remain unset).
+- Public frontend: https://clawpay.pages.dev (demo mode; live backend bindings remain unset). The original Workers URL remains available.
 - Backend: amd64 image built and container liveness checked locally. VPS SSH timed out on port 22; no remote services were changed.
 - Database: neither passport migration was pushed to the hosted database in this rollout.
 - Watch: Debug simulator build passed without signing. Simulator distribution uses the source/Xcode instructions below.
@@ -114,6 +114,18 @@ Caddy obtains a certificate, streams progress/audio without buffering, and block
 Update the PayPal Sandbox return/cancel URLs to the stable API origin used by the linking flow. A PayPal webhook, if configured, targets `https://api.YOUR-DOMAIN/api/v1/webhooks/paypal`. Verified polling reconciliation remains enabled even without a webhook. Set the generated `PUBLIC_BASE_URL` before creating new linking sessions.
 
 ## Publish the frontend
+
+The primary site is https://clawpay.pages.dev, with the dashboard at `/dashboard`. Deploy to the existing Pages project using the pinned Wrangler version:
+
+```sh
+cd frontend
+npm ci
+npm run deploy:pages
+```
+
+This builds the complete Hono app as a Pages advanced-mode `_worker.js`, preserving SPA routes, API routing, and security headers. Configuration is in `frontend/pages/wrangler.jsonc`. The Pages project has separate runtime settings from the original Worker. Configure only `CLAWPAY_API_ORIGIN`, `SUPABASE_URL`, and `SUPABASE_PUBLISHABLE_KEY` once the HTTPS backend is reachable, then redeploy. Until then, retain demo mode; verify `/api/config` before claiming live availability. Never copy backend secrets to Pages.
+
+### Original Workers deployment
 
 The project pins Wrangler 4.160.1 as a development dependency. The repo now includes `frontend/wrangler.jsonc`, which builds the existing Hono ESM Worker. It serves both `/` and `/dashboard`; this is not a static-only upload that would lose `/api/*`.
 
