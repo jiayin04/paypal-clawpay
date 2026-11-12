@@ -63,6 +63,12 @@ Open **[the dashboard](https://clawpay.pages.dev/dashboard)**; the public demo n
 
 These replays use sample data and do not execute payments. For the Watch-to-PayPal Sandbox flow, follow the [Watch guide](mobile/watch/README.md) and [deployment guide](deploy/README.md).
 
+## Architecture
+
+![ClawPay architecture: Watch and ESP-Claw clients, the read-only dashboard on Cloudflare Pages, the ClawPay API and PayPal agent on a Docker VPS, Supabase, and external PayPal, Channel3, LLM and Fish Audio services](docs/media/architecture.png)
+
+The **ClawPay API** is the only path to money: devices reach it through the Caddy ingress, it asks merchant agents for quotes over A2A, keeps state in Supabase, and hands approved payments to the separate **PayPal agent**, the only component holding PayPal credentials. The dashboard only reads. Merchant agents run inside the API process by default; the ESP-Claw firmware lives outside this repository. Source: [`docs/media/architecture.mmd`](docs/media/architecture.mmd) (Mermaid with the `logos` and `fluent-emoji-flat` icon packs) · [SVG](docs/media/architecture.svg).
+
 ## How a transaction works
 
 ```mermaid

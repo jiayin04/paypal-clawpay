@@ -1,0 +1,74 @@
+---
+config:
+  fontFamily: "Segoe UI, Helvetica, Arial, sans-serif"
+  themeCSS: "text, span, div, p, .label { font-family: 'Segoe UI', Helvetica, Arial, sans-serif !important; }"
+  look: neo
+  theme: base
+  themeVariables:
+    fontFamily: "Segoe UI, Helvetica, Arial, sans-serif"
+    fontSize: "14px"
+    primaryColor: "#ffffff"
+    primaryBorderColor: "#c9d3e0"
+    primaryTextColor: "#1f2937"
+    lineColor: "#8a99ad"
+    clusterBkg: "#f6f8fb"
+    clusterBorder: "#d7dee8"
+    edgeLabelBackground: "#ffffff"
+  flowchart:
+    htmlLabels: false
+    curve: basis
+    nodeSpacing: 50
+    rankSpacing: 65
+---
+flowchart TB
+    owner@{ icon: "fluent-emoji-flat:bust-in-silhouette", form: "circle", label: "Owner", pos: "b", h: 52 }
+    judge@{ icon: "fluent-emoji-flat:person-raising-hand", form: "circle", label: "Judge / visitor", pos: "b", h: 52 }
+
+    subgraph clients["📱 Client devices"]
+        watch@{ icon: "fluent-emoji-flat:watch", form: "rounded", label: "Apple Watch app<br/>SwiftUI · P-256 approval", pos: "b", h: 52 }
+        esp@{ icon: "fluent-emoji-flat:crab", form: "rounded", label: "ESP-Claw device<br/>ESP32 · button approval", pos: "b", h: 52 }
+    end
+
+    subgraph pages["☁️ Cloudflare Pages"]
+        dash@{ icon: "logos:react", form: "rounded", label: "Dashboard<br/>React + Hono · read-only", pos: "b", h: 52 }
+    end
+
+    subgraph vps["🐳 VPS · Docker"]
+        caddy@{ icon: "fluent-emoji-flat:locked", form: "rounded", label: "Ingress<br/>Caddy · TLS", pos: "b", h: 52 }
+        api@{ icon: "logos:fastapi-icon", form: "rounded", label: "ClawPay API<br/>MCP · assistant · approvals<br/>passports · payments · reconciler", pos: "b", h: 52 }
+        merchants@{ icon: "fluent-emoji-flat:convenience-store", form: "rounded", label: "Merchant agents<br/>A2A · Channel3 adapter", pos: "b", h: 52 }
+        ppagent@{ icon: "fluent-emoji-flat:robot", form: "rounded", label: "PayPal agent<br/>A2A · holds PayPal keys", pos: "b", h: 52 }
+    end
+
+    supa@{ icon: "logos:supabase-icon", form: "rounded", label: "Supabase<br/>Postgres + Auth · RLS", pos: "b", h: 52 }
+
+    subgraph ext["🌐 External services"]
+        paypal@{ icon: "logos:paypal", form: "rounded", label: "PayPal Sandbox<br/>Vault · Orders · Webhooks", pos: "b", h: 52 }
+        channel3@{ icon: "fluent-emoji-flat:shopping-bags", form: "rounded", label: "Channel3<br/>Product catalog", pos: "b", h: 52 }
+        llm@{ icon: "logos:openai-icon", form: "rounded", label: "LLM provider<br/>OpenAI · DeepSeek", pos: "b", h: 52 }
+        fish@{ icon: "fluent-emoji-flat:studio-microphone", form: "rounded", label: "Fish Audio<br/>Speech to text · TTS", pos: "b", h: 52 }
+    end
+
+    monitor@{ icon: "logos:prometheus", form: "rounded", label: "Monitoring<br/>optional", pos: "b", h: 52 }
+
+    owner -- "voice, confirm" --> watch
+    owner -- "voice, hold button" --> esp
+    owner -- "views" --> dash
+    judge -- "demo" --> dash
+
+    watch -- "HTTPS · device token" --> caddy
+    esp -- "HTTPS · MCP + LLM proxy" --> caddy
+    dash -- "HTTPS GET · owner JWT" --> caddy
+    dash -. "sign-in" .-> supa
+    caddy --> api
+
+    api -- "A2A · search, quote" --> merchants
+    merchants -- "REST · API key" --> channel3
+    api -- "A2A · payment instruction" --> ppagent
+    ppagent -- "REST · OAuth" --> paypal
+    paypal -. "webhooks" .-> caddy
+
+    api -- "RPC · row locks" --> supa
+    api -- "chat completions" --> llm
+    api -- "STT / TTS" --> fish
+    monitor -. "scrape /metrics" .-> api
