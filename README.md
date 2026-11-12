@@ -41,8 +41,13 @@ Secrets stay in `backend/.env` (never committed). Copy `backend/.env.example` to
 
 ## More
 
+- [Hackathon deployment](deploy/README.md)
 - [Setup, including the device and tunnel](backend/docs/setup.md)
 - [API contracts](backend/docs/contracts.md)
 - [Code layout](backend/docs/architecture.md)
 - [Hackathon demo](backend/docs/hackathon-demo.md)
 - [Product notes](PRODUCT.md) and [dashboard design system](DESIGN.md)
+
+## License
+
+[MIT](LICENSE) — Copyright (c) 2026 ClawPay contributors.
