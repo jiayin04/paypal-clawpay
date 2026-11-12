@@ -79,7 +79,7 @@ const safeguards = [
     "Payment confirmation happens on the watch, never in the browser.",
     "Uncertain payment results are reconciled with PayPal before an order is marked paid.",
     "The web dashboard is read-only and only shows your own account's records.",
-    "Your payment details stay protected and are never exposed in the dashboard.",
+    "Your wallet credentials stay private.",
 ];
 
 const prefersReducedMotion = () =>
