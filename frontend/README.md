@@ -13,7 +13,7 @@ npm run build
 npm start
 ```
 
-Open http://127.0.0.1:8787. The production Hono server serves the Vite assets and proxies only the allowlisted dashboard GET endpoints.
+Open http://127.0.0.1:8787 for the product landing page, or http://127.0.0.1:8787/dashboard for the dashboard. The production Hono server serves the Vite assets and proxies only the allowlisted dashboard GET endpoints.
 
 For frontend development, run `npm run dev` and `npm run dev:web` in separate terminals, then open http://127.0.0.1:5173. Vite forwards `/api` to Hono.
 

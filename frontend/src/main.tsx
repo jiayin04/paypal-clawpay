@@ -46,6 +46,7 @@ import type {
     Conversation,
 } from "./data";
 import "./styles.css";
+import { LandingPage } from "./landing";
 
 type Page = "overview" | "orders" | "activity" | "devices" | "lab";
 const navigation = [
@@ -1789,8 +1790,34 @@ function App() {
         </div>
     );
 }
+// Minimal history router: the Hono servers already fall back to index.html for any page path.
+function usePath() {
+    const [path, setPath] = useState(window.location.pathname);
+    useEffect(() => {
+        const onPop = () => setPath(window.location.pathname);
+        window.addEventListener("popstate", onPop);
+        return () => window.removeEventListener("popstate", onPop);
+    }, []);
+    const go = useCallback((next: string) => {
+        if (next !== window.location.pathname)
+            window.history.pushState(null, "", next);
+        window.scrollTo(0, 0);
+        setPath(next);
+    }, []);
+    return [path, go] as const;
+}
+function Root() {
+    const [path, go] = usePath();
+    const dashboard = path.replace(/\/+$/, "") === "/dashboard";
+    useEffect(() => {
+        document.title = dashboard
+            ? "ClawPay — Agent activity"
+            : "ClawPay — Shop by voice, approve on your wrist";
+    }, [dashboard]);
+    return dashboard ? <App /> : <LandingPage navigate={go} />;
+}
 createRoot(document.getElementById("root")!).render(
     <React.StrictMode>
-        <App />
+        <Root />
     </React.StrictMode>,
 );
