@@ -62,7 +62,7 @@ uv run python ../deploy/prepare_env.py --api-url https://api.YOUR-DOMAIN
 
 This creates three ignored files with private permissions under `deploy/.secrets/`. `api.env` excludes PayPal client credentials. `paypal.env` contains only the agent's settings. `frontend.json` contains only the API URL and public Supabase settings. Never upload the complete backend `.env` to the frontend or put it in an image. Do not source the generated raw env files in a shell.
 
-Confirm the source config also has the selected LLM endpoint/model/key, `FISH_AUDIO_API_KEY` for microphone STT, and `CHANNEL3_API_KEY` for real catalog search. TTS can fall back to the built-in Watch voice; microphone STT cannot. Keep `PAYPAL_ENV=sandbox`.
+Confirm the source config also has the selected LLM endpoint/model/key, `FISH_AUDIO_API_KEY` for microphone STT, and `CHANNEL3_API_KEY` for real catalog search. Both Watch TTS and microphone STT require Fish Audio; replies remain text-only when TTS is unavailable. Keep `PAYPAL_ENV=sandbox`.
 
 ## Build the backend off the VPS
 

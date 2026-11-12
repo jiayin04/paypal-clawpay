@@ -32,7 +32,6 @@ struct ContentView: View {
     // Editable in Settings; simulator builds can also seed them from SIMCTL_CHILD_CLAWPAY_* variables.
     @AppStorage("baseURL") private var baseURL = "http://127.0.0.1:8000"
     @State private var deviceToken = ""  // kept in the Keychain, not UserDefaults
-    @AppStorage("useFishAudio") private var useFishAudio = true
     // On only when deviceToken is this watch's own registered device (scripts/register_watch.py).
     @AppStorage("approveOnWatch") private var approveOnWatch = false
     @AppStorage("lastOrderID") private var lastOrderID = ""
@@ -86,6 +85,10 @@ struct ContentView: View {
                         if busy {
                             TypingBubble(steps: progress)
                                 .id("thinking")
+                        }
+                        if let voiceError = speaker.lastError {
+                            Label(voiceError, systemImage: "speaker.slash")
+                                .font(.caption).foregroundStyle(.secondary)
                         }
                         if !busy {
                             ForEach(products.prefix(2)) { product in
@@ -177,7 +180,7 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     NavigationLink {
-                        SettingsView(baseURL: $baseURL, deviceToken: $deviceToken, useFishAudio: $useFishAudio,
+                        SettingsView(baseURL: $baseURL, deviceToken: $deviceToken,
                                      approveOnWatch: $approveOnWatch, lastVoice: speaker.lastVoice,
                                      approverKey: approverKey, keyError: keyError)
                     } label: {
@@ -452,7 +455,7 @@ struct ContentView: View {
                 if autoApprove, approveOnWatch, answer.approvalRequired {
                     approve()
                 }
-                await speaker.speak(answer.reply, client: client, useFishAudio: useFishAudio)
+                await speaker.speak(answer.reply, client: client)
             } catch {
                 guard self.client == client else { return }
                 busy = false
@@ -583,7 +586,7 @@ extension ContentView {
                 }
                 Task { await refreshReceipt() }
                 await speaker.speak(result.status == "paid" ? "Paid \(prepared.payload.display)." : result.message,
-                                    client: client, useFishAudio: useFishAudio)
+                                    client: client)
             } catch {
                 guard self.client == client else { return }
                 fail(order, error)
@@ -960,7 +963,6 @@ private struct SpeechInputView: View {
 struct SettingsView: View {
     @Binding var baseURL: String
     @Binding var deviceToken: String
-    @Binding var useFishAudio: Bool
     @Binding var approveOnWatch: Bool
     let lastVoice: SpeechPlayer.Voice?
     let approverKey: ApproverKey?
@@ -969,7 +971,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Voice") {
-                Toggle("Fish Audio", isOn: $useFishAudio)
+                LabeledContent("Voice", value: "Fish Audio")
                 if let lastVoice {
                     Text("Last reply: \(lastVoice.rawValue)").font(.caption2).foregroundStyle(.secondary)
                 }

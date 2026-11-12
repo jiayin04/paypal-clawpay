@@ -8,7 +8,7 @@ model so the whole tool loop can be exercised from the watch simulator:
     uv run python -m scripts.assistant_demo_server --real-llm # use LLM_PROXY_* from the environment
 
 FISH_AUDIO_* from ``.env`` or the environment enables real Fish Audio speech
-(paid API); without a key /speech returns 503 and the watch uses its own voice.
+(paid API); without a key /speech returns 503 and watch replies remain text-only.
 
 It prints a ready-to-use ``cpd_`` device token. Nothing persists after exit.
 Development only: it imports the test fakes and must never be deployed.
@@ -126,7 +126,7 @@ def main() -> None:
                                  llm_token_hash=hash_token(PEPPER, generate_llm_token()))
     print(f"\nClawPay assistant demo on http://{args.host}:{args.port}  (LLM: "
           f"{'real upstream' if args.real_llm else 'offline keyword stand-in'}; speech: "
-          f"{'Fish Audio' if settings.fish_audio_api_key else 'watch built-in voice'})")
+          f"{'Fish Audio' if settings.fish_audio_api_key else 'unavailable (text replies only)'})")
     print(f"device_id    {device_id}\ndevice token {token}")
     print("Register a watch as its own approver (after launching the watch app once):\n"
           f"  uv run python -m scripts.register_watch --base-url http://{args.host}:{args.port} "

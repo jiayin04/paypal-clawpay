@@ -5,7 +5,7 @@ to record and transcribe a request, or invoke the Siri shortcut below.
 The app sends the transcribed text to `POST /api/v1/assistant/messages` with its
 `cpd_` token. The latest answer is shown; earlier messages are under History
 (the clock button), with New chat inside History. Replies aim for 8–16 words.
-Fish Audio speaks the reply as streamed PCM arrives, falling back to the built-in watch voice. Payment
+Fish Audio is the only reply voice and plays streamed PCM as it arrives. Payment
 review opens a separate sheet with the amount and merchant.
 
 ## Microphone speech-to-text
@@ -55,7 +55,7 @@ The OS purpose string is `NSLocationWhenInUseUsageDescription`. No Google Maps A
 
 ## Faster voice replies
 
-The watch uses authenticated `POST /api/v1/assistant/speech/stream`: Fish Audio HTTP streaming with `format=pcm`, 24 kHz mono signed 16-bit little-endian audio and `latency=low`. The backend forwards bounded chunks; it does not collect the entire clip. The watch prebuffers about 200 ms, then schedules PCM buffers in AVAudioEngine as the rest arrives. Starting another request cancels the old stream/playback. The Fish key remains on the backend. Provider failures fall back to Apple's built-in voice. The MP3 endpoint remains available for older clients.
+The watch uses authenticated `POST /api/v1/assistant/speech/stream`: Fish Audio HTTP streaming with `format=pcm`, 24 kHz mono signed 16-bit little-endian audio and `latency=low`. The backend forwards bounded chunks; it does not collect the entire clip. The watch prebuffers about 200 ms, then schedules PCM buffers in AVAudioEngine as the rest arrives. Starting another request cancels the old stream/playback. The Fish key remains on the backend. Provider failures leave the reply visible as text with a brief voice-unavailable message; no other TTS engine is used. The MP3 endpoint remains available for older clients.
 
 Fish also supports bidirectional WebSocket TTS, but this path streams audio from a completed short agent reply. Model/tool execution and batch transcription still precede playback; this is not full-duplex speech-to-speech. Successful single-tool order creation, spending summaries and confirmed paid status return short replies directly from trusted tool data, avoiding an extra LLM round trip. Product search and other status explanations still use the model.
 
@@ -131,7 +131,7 @@ remains a separate application.
 
 Needs Xcode with the watchOS simulator runtime (`xcodebuild -downloadPlatform watchOS`).
 
-1. Start the demo backend from `backend/`. It uses the in-memory store, mock merchants and a keyword stand-in for the LLM, and prints a device token. With `FISH_AUDIO_API_KEY` in `.env` it calls Fish Audio for speech (paid); without it the watch uses its own voice:
+1. Start the demo backend from `backend/`. It uses the in-memory store, mock merchants and a keyword stand-in for the LLM, and prints a device token. With `FISH_AUDIO_API_KEY` in `.env` it calls Fish Audio for speech (paid); without it replies remain text-only:
 
    ```bash
    uv run python -m scripts.assistant_demo_server
