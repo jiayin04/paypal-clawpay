@@ -32,6 +32,8 @@ Live mode polls every 15 seconds while the tab is visible, reading the latest 50
 
 All fixture data is labeled synthetic. Voice to checkout, budget protection, and uncertain-payment reconciliation are step-by-step simulations, never agent calls or payments. Live device enrollment, wallet changes and payment approval stay in the existing flows.
 
+Demo lab includes an interactive Apple Watch preview synchronized with the replay. Tap Talk, Review, and Confirm on the watch, or use the replay controls. The budget story prevents confirmation; the recovery story checks the original payment. Reset and scenario switching clear the preview together with the timeline. This is a browser recreation of the Watch experience, not a streamed native watchOS Simulator. It never records microphone audio or submits a payment.
+
 ## Hosted preview
 
 The public site is https://clawpay.pages.dev/; the dashboard is https://clawpay.pages.dev/dashboard. To publish an update to the existing Cloudflare Pages project:

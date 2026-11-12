@@ -67,6 +67,13 @@ await page
     .getByRole("navigation", { name: "Main navigation", exact: true })
     .getByRole("button", { name: "Demo lab" })
     .click();
+const watchPreview = page.getByRole("figure", { name: "Apple Watch preview" });
+const replayWrites = [];
+const recordReplayWrite = (request) => {
+    if (!["GET", "HEAD", "OPTIONS"].includes(request.method()))
+        replayWrites.push(request.url());
+};
+page.on("request", recordReplayWrite);
 for (const name of [
     "Voice to checkout",
     "A budget that holds",
@@ -87,8 +94,45 @@ for (const name of [
             .getByRole("button", { name: "Replay complete" })
             .isDisabled(),
     );
+    await watchPreview.getByRole("heading", {
+        name: {
+            "Voice to checkout": "Payment complete",
+            "A budget that holds": "Payment stopped",
+            "Resolve the unknown": "Payment confirmed",
+        }[name],
+        exact: true,
+    }).waitFor();
     await page.getByRole("button", { name: "Reset", exact: true }).click();
+    assert.ok(await watchPreview.getByRole("button", { name: "Talk", exact: true }).isVisible());
 }
+// Watch actions and replay controls must use the same state without submitting payments.
+await page.getByRole("button", { name: /Voice to checkout/ }).click();
+for (const action of ["Talk", "Continue", "See result", "Review"])
+    await watchPreview.getByRole("button", { name: action, exact: true }).click();
+await watchPreview.getByRole("heading", { name: "Review payment" }).waitFor();
+assert.equal(await page.getByText("4 of 5 steps", { exact: true }).count(), 1);
+assert.equal(await watchPreview.getByRole("heading", { name: "Payment complete" }).count(), 0);
+await watchPreview.getByRole("button", { name: "Confirm", exact: true }).click();
+assert.ok(await page.getByRole("button", { name: "Replay complete" }).isDisabled());
+await watchPreview.getByRole("button", { name: "Reset watch preview" }).click();
+assert.ok(await page.getByRole("button", { name: "Start replay" }).isVisible());
+await page.getByRole("button", { name: /A budget that holds/ }).click();
+for (const action of ["Talk", "Continue", "Check limit"])
+    await watchPreview.getByRole("button", { name: action, exact: true }).click();
+await watchPreview.getByRole("heading", { name: "Above your limit" }).waitFor();
+assert.equal(await watchPreview.getByRole("button", { name: "Confirm", exact: true }).count(), 0);
+await watchPreview.getByRole("button", { name: "See outcome" }).click();
+await watchPreview.getByRole("heading", { name: "Payment stopped" }).waitFor();
+await watchPreview.getByRole("button", { name: "Try again" }).click();
+await page.getByRole("button", { name: /Resolve the unknown/ }).click();
+for (const action of ["Talk", "Check status", "Continue", "See result"])
+    await watchPreview.getByRole("button", { name: action, exact: true }).click();
+await watchPreview.getByRole("heading", { name: "Payment confirmed" }).waitFor();
+await page.getByRole("button", { name: /Voice to checkout/ }).click();
+assert.ok(await watchPreview.getByRole("button", { name: "Talk", exact: true }).isVisible());
+assert.equal(await watchPreview.getByText("Demo receipt").count(), 0);
+assert.deepEqual(replayWrites, []);
+page.off("request", recordReplayWrite);
 await page.screenshot({
     path: "test-results/ui/lab.png",
     fullPage: true,

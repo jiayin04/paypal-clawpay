@@ -51,6 +51,7 @@ import type {
 } from "./data";
 import "./styles.css";
 import { LandingPage } from "./landing";
+import { WatchPreview } from "./watch-preview";
 
 type Page = "overview" | "orders" | "activity" | "devices" | "lab";
 const navigation = [
@@ -199,6 +200,11 @@ function App() {
         [step, setStep] = useState(-1),
         [menu, setMenu] = useState(false),
         [help, setHelp] = useState(false);
+    const replay = scenarios[scenario];
+    const replayComplete = step >= replay.steps.length - 1;
+    const advanceReplay = () =>
+        setStep((current) => Math.min(current + 1, replay.steps.length - 1));
+    const resetReplay = () => setStep(-1);
     const refreshSequence = useRef(0);
     const canConnect = configReady && liveAvailable && Boolean(auth);
     const data = mode === "demo" ? demo : snapshot;
@@ -1540,73 +1546,86 @@ function App() {
                             </section>
                             <section className="panel simulation">
                                 <div className="section-heading">
-                                    <h2>{scenarios[scenario].title}</h2>
+                                    <h2>{replay.title}</h2>
                                     <span className="status neutral">
                                         Interactive preview
                                     </span>
                                 </div>
-                                <blockquote>
-                                    {scenarios[scenario].prompt}
-                                </blockquote>
-                                <ol className="simulation-steps">
-                                    {scenarios[scenario].steps.map(
-                                        ([title, description], i) => (
-                                            <li
-                                                className={
-                                                    i <= step ? "complete" : ""
-                                                }
-                                                key={title}
+                                <div className="simulation-stage">
+                                    <div className="simulation-watch">
+                                        <WatchPreview
+                                            scenario={replay.id}
+                                            step={step}
+                                            onAdvance={advanceReplay}
+                                            onReset={resetReplay}
+                                        />
+                                        <div className="simulation-actions">
+                                            <button
+                                                className="button primary"
+                                                onClick={advanceReplay}
+                                                disabled={replayComplete}
                                             >
-                                                <span>
-                                                    {i <= step ? (
-                                                        <Check size={17} />
-                                                    ) : (
-                                                        i + 1
-                                                    )}
-                                                </span>
-                                                <div>
-                                                    <strong>{title}</strong>
-                                                    <p>
-                                                        {i <= step
-                                                            ? description
-                                                            : "Waiting for the next step"}
-                                                    </p>
-                                                </div>
-                                            </li>
-                                        ),
-                                    )}
-                                </ol>
-                                <div className="simulation-actions">
-                                    <button
-                                        className="button primary"
-                                        onClick={() => setStep(step + 1)}
-                                        disabled={
-                                            step >=
-                                            scenarios[scenario].steps.length - 1
-                                        }
-                                    >
-                                        {step < 0
-                                            ? "Start replay"
-                                            : step >=
-                                                scenarios[scenario].steps
-                                                    .length -
-                                                    1
-                                              ? "Replay complete"
-                                              : "Next step"}
-                                        <ArrowRight size={16} />
-                                    </button>
-                                    <button
-                                        className="button"
-                                        onClick={() => setStep(-1)}
-                                        disabled={step < 0}
-                                    >
-                                        Reset
-                                    </button>
-                                    <span role="status">
-                                        {step < 0
-                                            ? "Ready when you are"
-                                            : `${step + 1} of ${scenarios[scenario].steps.length} steps`}
-                                    </span>
+                                                {step < 0
+                                                    ? "Start replay"
+                                                    : replayComplete
+                                                      ? "Replay complete"
+                                                      : "Next step"}
+                                                <ArrowRight size={16} />
+                                            </button>
+                                            <button
+                                                className="button"
+                                                onClick={resetReplay}
+                                                disabled={step < 0}
+                                            >
+                                                Reset
+                                            </button>
+                                            <span role="status">
+                                                {step < 0
+                                                    ? "Ready when you are"
+                                                    : `${step + 1} of ${replay.steps.length} steps`}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="simulation-story">
+                                        <blockquote>
+                                            {replay.prompt}
+                                        </blockquote>
+                                        <ol className="simulation-steps">
+                                            {replay.steps.map(
+                                                ([title, description], i) => (
+                                                    <li
+                                                        className={
+                                                            i < step || replayComplete
+                                                                ? "complete"
+                                                                : i === step
+                                                                  ? "current"
+                                                                  : ""
+                                                        }
+                                                        key={title}
+                                                        aria-current={
+                                                            i === step ? "step" : undefined
+                                                        }
+                                                    >
+                                                        <span>
+                                                            {i < step || replayComplete ? (
+                                                                <Check size={17} />
+                                                            ) : (
+                                                                i + 1
+                                                            )}
+                                                        </span>
+                                                        <div>
+                                                            <strong>{title}</strong>
+                                                            <p>
+                                                                {i <= step
+                                                                    ? description
+                                                                    : "Waiting for the next step"}
+                                                            </p>
+                                                        </div>
+                                                    </li>
+                                                ),
+                                            )}
+                                        </ol>
+                                    </div>
                                 </div>
                             </section>
                         </div>
