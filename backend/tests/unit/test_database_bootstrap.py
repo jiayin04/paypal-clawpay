@@ -65,7 +65,7 @@ def test_preflight_happens_before_cleanup_and_preserves_system_data():
 def test_schema_covers_all_tables_with_rls_and_explicit_backend_access():
     schema = (ROOT / "supabase/schema.sql").read_text(encoding="utf-8")
     tables = bootstrap.TABLE.findall(schema)
-    assert len(tables) == len(set(tables)) == 16
+    assert len(tables) == len(set(tables)) == 18
     for table in tables:
         assert f"alter table public.{table} enable row level security;" in schema
         assert f"'{table}'" in schema[:schema.index("$bootstrap_preflight$;")]

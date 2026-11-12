@@ -47,9 +47,11 @@ class SupabaseOrderRepository(_SupabaseBase):
         cart_sha256: str,
         items: Sequence[Mapping[str, Any]],
         total_minor: int,
+        delegation_id: str | None = None,
+        passport_required: bool = False,
     ) -> RpcResult:
         row = await self._rpc_one(
-            "create_order_from_quote",
+            "create_order_with_passport",
             {
                 "p_user_id": user_id,
                 "p_device_id": device_id,
@@ -60,6 +62,8 @@ class SupabaseOrderRepository(_SupabaseBase):
                 "p_cart_sha256": cart_sha256,
                 "p_items": [dict(i) for i in items],
                 "p_total_minor": total_minor,
+                "p_delegation_id": delegation_id,
+                "p_passport_required": passport_required,
             },
         )
         return RpcResult(

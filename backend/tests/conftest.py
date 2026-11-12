@@ -21,6 +21,7 @@ _ENV_PREFIXES = (
     "CLAWPAY_",
     "METRICS_",
     "CHANNEL3_",
+    "AGENT_PASSPORT_",
     "FISH_AUDIO_",
 )
 _ENV_NAMES = {

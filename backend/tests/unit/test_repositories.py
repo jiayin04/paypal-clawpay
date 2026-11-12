@@ -101,10 +101,12 @@ async def test_supabase_create_order_params() -> None:
         user_id="u", device_id="d", merchant_code="grocer", currency="MYR",
         quote_expires_at=datetime(2026, 1, 1, tzinfo=UTC), quote_reference="q", cart_sha256="a" * 64,
         items=[{"sku": "S", "name": "n", "qty": 1, "unit_price_minor": 5}], total_minor=5,
+        delegation_id="grant-1", passport_required=True,
     )
     assert result.ok and result.data == {"order_id": "o1", "deduplicated": False}
     name, params = client.calls[0]
-    assert name == "create_order_from_quote"
+    assert name == "create_order_with_passport"
+    assert params["p_delegation_id"] == "grant-1" and params["p_passport_required"] is True
     assert params["p_items"] == [{"sku": "S", "name": "n", "qty": 1, "unit_price_minor": 5}]
     assert params["p_quote_expires_at"] == "2026-01-01T00:00:00+00:00"
 

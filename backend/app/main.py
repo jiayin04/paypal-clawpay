@@ -21,6 +21,7 @@ from app.api.routes import (
     mcp,
     metrics,
     orders,
+    passports,
     payment_methods,
     spending,
     webhooks,
@@ -135,6 +136,7 @@ def create_app(
     app.include_router(conversations.router)
     app.include_router(spending.router)
     app.include_router(audit.router)
+    app.include_router(passports.router)
     if settings.mcp_enabled:
         app.include_router(mcp.router)
         app.include_router(assistant.router)

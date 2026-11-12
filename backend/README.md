@@ -60,6 +60,9 @@ RLS scopes reads to the user; explicit column grants hide tokens, provider refer
 | `GET /api/v1/orders/{id}/timeline`, `/a2a-messages` | JWT; safe summaries |
 | `GET /api/v1/conversations`, `/api/v1/conversations/{id}/events` | JWT; safe summaries |
 | `GET /api/v1/spending/summary`, `GET /api/v1/audit-events` | JWT; summary matches MCP tool |
+| `POST /api/v1/delegations`, `GET /api/v1/delegations`, `DELETE /api/v1/delegations/{id}` | Owner JWT; issue, list and revoke agent passports |
+| `GET /api/v1/delegations/receipts` | Owner JWT; signed allowed/refused order decisions |
+| `GET /.well-known/agent-passport` | Public; Ed25519 key that verifies passports and receipts |
 | `POST /api/v1/payment-methods/paypal/setup` | JWT; 5/min, returns approve URL |
 | `GET /api/v1/payment-methods/paypal/return` | See unauthenticated table below |
 | `GET /api/v1/payment-methods`, `DELETE /api/v1/payment-methods/{id}` | JWT; masked email, no vault references |
@@ -131,6 +134,116 @@ Set `CHANNEL3_API_KEY` to add a third merchant, `channel3`, backed by the real C
 - Most Channel3 offers are in USD: set `DEFAULT_CURRENCY=USD` (and `CHANNEL3_COUNTRY=US`) or the agent finds no priced offers. The phone threshold and daily cap apply unchanged, in minor units of `DEFAULT_CURRENCY`.
 - Payment goes to the ClawPay PayPal Sandbox merchant; the retailer order is not placed (demo marketplace).
 
+## Agent passports (lite)
+
+An agent passport is a signed, revocable permission slip from the owner to one agent device (the ESP-Claw or the watch). It says which shops that device's agent may order from, the largest single order, and when the permission ends. ClawPay checks it before every order and keeps a signed receipt of each decision, so the owner, or a judge, can see and verify what the agent was allowed to do.
+
+It sits on top of the existing protections: the daily cap, the RM100/USD100 phone threshold and the signed approval on the device all still apply.
+
+### Set up
+
+1. Generate the issuer key and put it in `backend/.env`:
+
+   ```bash
+   python -c "import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).rstrip(b'=').decode())"
+   ```
+
+   ```dotenv
+   AGENT_PASSPORT_SIGNING_KEY=<the printed value>
+   # Optional: refuse orders from devices that were never given a passport.
+   AGENT_PASSPORT_REQUIRED=false
+   ```
+
+   Keep this key secret and stable: passports and receipts signed with an old key can only be verified with that old key.
+2. Apply migrations `20261112090000_agent_passports.sql` and `20261112090100_atomic_passport_orders.sql` before serving this backend. They add the grant/receipt tables and the guarded order RPC. For an already populated database, use incremental migrations rather than the standalone `supabase/schema.sql` rebuild.
+3. Restart the backend. `GET /.well-known/agent-passport` now lists one Ed25519 key.
+
+Without the key, passports cannot be issued (`503 passport_not_configured`); passports already issued are still enforced, but new receipts are stored unsigned.
+
+### Issue, list and revoke
+
+These use the owner's Supabase access token (for example from the dashboard sign-in). Find the device id with `GET /api/v1/devices`. Swagger at `/docs` also works: use its Authorize button.
+
+```bash
+# Issue: Channel3 and Grocer only, at most USD/RM 50.00 per order, valid for 7 days
+curl -X POST http://127.0.0.1:8000/api/v1/delegations \
+  -H "Authorization: Bearer <owner JWT>" -H "Content-Type: application/json" \
+  -d '{"device_id":"<device uuid>","merchants":["channel3","grocer"],"max_order_minor":5000,"expires_in_hours":168}'
+
+# List passports (status: active, expired or revoked)
+curl http://127.0.0.1:8000/api/v1/delegations -H "Authorization: Bearer <owner JWT>"
+
+# Signed decisions, newest first
+curl "http://127.0.0.1:8000/api/v1/delegations/receipts?limit=20" -H "Authorization: Bearer <owner JWT>"
+
+# Revoke (takes effect on the device's next order)
+curl -X DELETE http://127.0.0.1:8000/api/v1/delegations/<passport id> -H "Authorization: Bearer <owner JWT>"
+```
+
+| Field | Rule |
+| --- | --- |
+| `device_id` | One of the owner's active devices |
+| `merchants` | 1–10 enabled merchant codes (`grocer`, `electronics`, and `channel3` when Channel3 is configured) |
+| `max_order_minor` | Largest single order in minor units of `DEFAULT_CURRENCY`; at most `DAILY_SPENDING_LIMIT_MINOR` |
+| `expires_in_hours` | 1–720, default 168 (7 days) |
+
+One device has at most one live passport: revoke it before issuing a new one (`409 delegation_exists`). An expired passport is replaced automatically.
+
+### What the agent experiences
+
+| Situation | Result of `create_order` |
+| --- | --- |
+| Device never given a passport | Orders as before (refused only if `AGENT_PASSPORT_REQUIRED=true`) |
+| Active passport, allowed shop, within the limit | Order created; receipt `allowed` |
+| Shop not in the passport | Refused before any merchant call; receipt `merchant_not_delegated` |
+| Quote above `max_order_minor` | Refused; receipt `delegation_limit_exceeded` |
+| Passport revoked or expired | Refused; receipt `delegation_revoked` / `delegation_expired` |
+| Passport cannot be read (database error) | Refused with `internal_error`; nothing is created |
+
+A refusal reaches the device LLM (and the watch) as the tool error `delegation_denied` with a plain sentence, for example "This order is above the per-order limit in this device's agent passport." The early check saves quote calls. The final check runs atomically inside `create_order_with_passport`, holding device/grant locks through order creation. Revocation or expiry during quoting refuses creation; a changed/new grant requires retrying under that grant. Receipt writes are best-effort: a failed write is logged and never blocks or fails an order.
+
+### Verify a signature
+
+A passport or receipt carries `document` (the exact signed bytes: canonical JSON, keys sorted, no spaces, ASCII) and `signature` (Ed25519, base64url without padding). Anyone can check it with the public key:
+
+```python
+import base64, json, urllib.request
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+b64 = lambda s: base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
+key = json.load(urllib.request.urlopen("http://127.0.0.1:8000/.well-known/agent-passport"))["keys"][0]
+item = {...}  # one passport or receipt from the API above
+Ed25519PublicKey.from_public_bytes(b64(key["public_key"])).verify(b64(item["signature"]), item["document"].encode("ascii"))
+```
+
+`verify` raises `InvalidSignature` if a single byte was changed. A passport document looks like this (shown expanded; the signed form has no whitespace):
+
+```json
+{
+  "agent": {"id": "<device uuid>", "type": "device"},
+  "delegation_id": "<passport uuid>",
+  "expires_at": 1795000000,
+  "issued_at": 1794395200,
+  "issuer": "clawpay",
+  "key_id": "3f9c1a7d2e5b8c40",
+  "principal": "<owner user uuid>",
+  "purpose": "clawpay.delegation.v1",
+  "scope": {"currency": "USD", "max_order_minor": 5000, "merchants": ["channel3", "grocer"]}
+}
+```
+
+Receipts use `"purpose": "clawpay.receipt.v1"` and add `decision`, `reason`, `merchant`, `amount_minor`, `order_id` (null when refused) and `receipt_id`.
+
+### Dashboard
+
+The Devices page shows each passport (limit, shops, expiry, key id, status) and the recent allowed and refused decisions. The dashboard is read-only: issuing and revoking stay in the API.
+
+### Limits of the lite version
+
+- The passport is checked when the order is created, not again at approval. Revoking does not cancel an order already waiting for approval; cancel it, or let it expire.
+- Merchant, PayPal and ClawPay agents do not sign their messages to each other, and the passport is not part of the payload the device signs.
+- The format follows the Agent Passport System's ideas (Ed25519, canonical JSON, scoped grants, receipts) but is not tested against its conformance fixtures, so it is not claimed to be APS-compatible.
+
 ## Observability
 
 - **Request ids.** Every response carries `X-Request-ID` (except `/llm/v1`, whose contract allows only two headers). A caller-supplied `X-Request-ID` matching `^[A-Za-z0-9._-]{8,64}$` is reused, so a tunnel or gateway id flows through; anything else is replaced. The id is forwarded to merchant agents on every A2A call.
@@ -190,6 +303,8 @@ See `.env.example` for defaults and explanations. Money uses integer minor units
 | `CHANNEL3_BASE_URL` | `https://api.trychannel3.com` | Channel3 API base. |
 | `CHANNEL3_COUNTRY` | `US` | ISO country for offers. Prices are taken in `DEFAULT_CURRENCY` (usually set `USD`). |
 | `CHANNEL3_TIMEOUT_SECONDS` | `4.5` | Per Channel3 HTTP call (search is capped at 5 s overall). |
+| `AGENT_PASSPORT_SIGNING_KEY` | `` | Ed25519 seed (32 bytes, base64url) that signs agent passports and receipts. Empty = no new grants. |
+| `AGENT_PASSPORT_REQUIRED` | `false` | `true` = devices without a passport cannot order. |
 | `MERCHANT_AGENT_TIMEOUT_SECONDS` | `8` |  |
 | `INTERNAL_SERVICE_TOKEN` | `` | Admin token: device registration and admin revoke. At least 32 characters. Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))" |
 | `PUBLIC_BASE_URL` | `` | ESP-Claw device integration. PUBLIC_BASE_URL: public HTTPS origin with a CA-signed cert (tunnel or host), e.g. https://xxxx.trycloudflare.com. |

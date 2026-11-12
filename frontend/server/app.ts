@@ -8,7 +8,7 @@ export type Config = {
 };
 // Deliberately read-only: no device tokens, admin credentials or payment operations.
 const allowed =
-    /^\/(orders(?:\/[0-9a-f-]{36}(?:\/(?:timeline|a2a-messages))?)?|conversations(?:\/[0-9a-f-]{36}\/events)?|spending\/summary|audit-events|devices|payment-methods)$/i;
+    /^\/(orders(?:\/[0-9a-f-]{36}(?:\/(?:timeline|a2a-messages))?)?|conversations(?:\/[0-9a-f-]{36}\/events)?|spending\/summary|audit-events|devices|payment-methods|delegations(?:\/receipts)?)$/i;
 export function createApp(config: Config, fetcher: typeof fetch = fetch) {
     const app = new Hono();
     app.use(
