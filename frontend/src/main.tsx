@@ -199,6 +199,7 @@ function App() {
         [menu, setMenu] = useState(false),
         [help, setHelp] = useState(false);
     const refreshSequence = useRef(0);
+    const canConnect = configReady && liveAvailable && Boolean(auth);
     const data = mode === "demo" ? demo : snapshot;
     const known = (key: keyof Snapshot) =>
         mode === "demo" || Boolean(loaded[key]);
@@ -721,7 +722,7 @@ function App() {
                             >
                                 {session.user.email?.[0]?.toUpperCase() || "C"}
                             </button>
-                        ) : (
+                        ) : canConnect ? (
                             <button
                                 className="button small"
                                 onClick={() => setLogin(true)}
@@ -729,7 +730,7 @@ function App() {
                                 <LogIn size={15} />
                                 <span>Connect live</span>
                             </button>
-                        )}
+                        ) : null}
                     </div>
                 </header>
                 <main id="main" tabIndex={-1}>
@@ -807,15 +808,17 @@ function App() {
                             </span>
                         </p>
                         {mode === "demo" ? (
-                            <button
-                                className="text-button"
-                                onClick={() =>
-                                    session ? setMode("live") : setLogin(true)
-                                }
-                            >
-                                View live activity
-                                <ArrowRight size={15} />
-                            </button>
+                            canConnect && (
+                                <button
+                                    className="text-button"
+                                    onClick={() =>
+                                        session ? setMode("live") : setLogin(true)
+                                    }
+                                >
+                                    View live activity
+                                    <ArrowRight size={15} />
+                                </button>
+                            )
                         ) : (
                             <button
                                 className="text-button"
@@ -1649,7 +1652,7 @@ function App() {
                 ))}
             </nav>
             <Modal
-                open={login}
+                open={login && canConnect}
                 onClose={() => {
                     setLogin(false);
                     setPassword("");
@@ -1657,65 +1660,50 @@ function App() {
                 label="Connect your workspace"
             >
                 <p className="modal-intro">
-                    Sign in with the Supabase account that owns your paired
-                    watch. Your activity stays private.
+                    Sign in with the account linked to your watch. Your activity
+                    stays private.
                 </p>
-                {!configReady ? (
-                    <p role="status">Loading connection settings…</p>
-                ) : !liveAvailable ? (
-                    <div className="error-banner">
-                        <p>
-                            Live mode isn’t configured on this host. Run the
-                            local Hono server with your Supabase URL,
-                            publishable key and ClawPay API origin. The demo is
-                            ready to explore.
+                <form onSubmit={(e) => void signin(e)}>
+                    <label className="field">
+                        Email
+                        <input
+                            type="email"
+                            autoComplete="username"
+                            required
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                        />
+                    </label>
+                    <label className="field">
+                        Password
+                        <input
+                            type="password"
+                            autoComplete="current-password"
+                            required
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                        />
+                    </label>
+                    {authError && (
+                        <p className="form-error" role="alert">
+                            {authError}
                         </p>
-                    </div>
-                ) : (
-                    <form onSubmit={(e) => void signin(e)}>
-                        <label className="field">
-                            Email
-                            <input
-                                type="email"
-                                autoComplete="username"
-                                required
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                            />
-                        </label>
-                        <label className="field">
-                            Password
-                            <input
-                                type="password"
-                                autoComplete="current-password"
-                                required
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                            />
-                        </label>
-                        {authError && (
-                            <p className="form-error" role="alert">
-                                {authError}
-                            </p>
-                        )}
-                        <button
-                            className="button primary full-width"
-                            type="submit"
-                            disabled={authBusy}
-                        >
-                            {authBusy ? (
-                                <LoaderCircle size={17} className="spin" />
-                            ) : (
-                                <LogIn size={17} />
-                            )}{" "}
-                            {authBusy ? "Signing in…" : "Sign in"}
-                        </button>
-                    </form>
-                )}
+                    )}
+                    <button
+                        className="button primary full-width"
+                        type="submit"
+                        disabled={authBusy}
+                    >
+                        {authBusy ? (
+                            <LoaderCircle size={17} className="spin" />
+                        ) : (
+                            <LogIn size={17} />
+                        )}{" "}
+                        {authBusy ? "Signing in…" : "Sign in"}
+                    </button>
+                </form>
                 <p className="footnote">
-                    Use your owner account, rather than a watch token or server
-                    key. Ask your project administrator if you need account
-                    access.
+                    Need access? Ask your workspace owner.
                 </p>
             </Modal>
             <Modal
