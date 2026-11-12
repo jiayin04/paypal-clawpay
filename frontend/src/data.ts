@@ -439,6 +439,7 @@ export const passportReason = (reason: string) =>
         no_delegation: "No passport",
         delegation_revoked: "Passport revoked",
         delegation_expired: "Passport expired",
+        delegation_changed: "Passport changed. Retry required",
         merchant_not_delegated: "Shop not allowed",
         currency_not_delegated: "Currency not allowed",
         delegation_limit_exceeded: "Over per-order limit",

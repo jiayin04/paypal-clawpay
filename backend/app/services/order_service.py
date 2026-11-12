@@ -27,7 +27,7 @@ from app.repositories.ports.payment_methods import PaymentMethodRepository
 from app.repositories.ports.payments import PaymentRepository
 from app.services.context import DeviceContext
 from app.services.errors import ToolError
-from app.services.passport_service import PassportService
+from app.services.passport_service import DENIAL_MESSAGES, PassportService
 from app.services.merchant_service import A2ALog, MerchantFailure, MerchantService
 from app.services.spending_service import SpendingService
 
@@ -185,6 +185,8 @@ class OrderService:
                     cart_sha256=cart,
                     items=rpc_items,
                     total_minor=total,
+                    delegation_id=grant.id if grant else None,
+                    passport_required=settings.agent_passport_required,
                 ),
             )
         except ToolError:
@@ -197,6 +199,8 @@ class OrderService:
 
         if not result.ok:
             background.add_task(self._merchant_service.write_log, log, None)
+            if result.reason in DENIAL_MESSAGES and self._passports is not None:
+                await self._passports.deny_order(device, grant, result.reason, merchant_id, total, currency)
             if result.reason == "merchant_unavailable":
                 raise ToolError("merchant_unavailable")
             # device_revoked: the next request fails auth with 401 anyway.

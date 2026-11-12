@@ -4,8 +4,8 @@ Rules applied by ``create_order``:
 - A device that has never had a grant is not governed and orders as before,
   unless AGENT_PASSPORT_REQUIRED=true.
 - Once a device has had a grant, its latest grant must be active (not revoked,
-  not expired), allow the merchant and cover the order amount. Otherwise the
-  order is refused before it is created.
+  not expired), allow the merchant and cover the order amount. The order RPC
+  checks this again atomically after quoting and refuses a changed grant.
 - Every decision for a governed device is written as a signed receipt
   (best-effort: a failed receipt write never blocks or fails an order).
 
@@ -41,6 +41,7 @@ DENIAL_MESSAGES: dict[str, str] = {
     "no_delegation": "This device has no agent passport. The owner must grant one before it can order.",
     "delegation_revoked": "This device's agent passport was revoked by the owner.",
     "delegation_expired": "This device's agent passport has expired. Ask the owner to issue a new one.",
+    "delegation_changed": "This device's agent passport changed while preparing the order. Please try again.",
     "merchant_not_delegated": "This device's agent passport does not allow ordering from that shop.",
     "currency_not_delegated": "This device's agent passport does not allow that currency.",
     "delegation_limit_exceeded": "This order is above the per-order limit in this device's agent passport.",
@@ -183,7 +184,7 @@ class PassportService:
             return None
         reason = passport.check_merchant(grant, merchant, self._clock.utc_now())
         if reason is not None:
-            await self._deny(device, grant, reason, merchant, None, currency)
+            await self.deny_order(device, grant, reason, merchant, None, currency)
         return grant
 
     async def authorize_amount(self, device: DeviceContext, grant: passport.Grant | None, merchant: str,
@@ -192,7 +193,7 @@ class PassportService:
             return
         reason = passport.check_amount(grant, amount_minor, currency)
         if reason is not None:
-            await self._deny(device, grant, reason, merchant, amount_minor, currency)
+            await self.deny_order(device, grant, reason, merchant, amount_minor, currency)
 
     async def record_allowed(self, device: DeviceContext, grant: passport.Grant | None, *, order_id: str,
                              merchant: str, amount_minor: int, currency: str) -> None:
@@ -200,7 +201,7 @@ class PassportService:
             await self._receipt(device, grant, "allowed", "within_delegation", merchant, amount_minor,
                                 currency, order_id)
 
-    async def _deny(self, device: DeviceContext, grant: passport.Grant | None, reason: str, merchant: str,
+    async def deny_order(self, device: DeviceContext, grant: passport.Grant | None, reason: str, merchant: str,
                     amount_minor: int | None, currency: str) -> None:
         logger.info("Order refused by agent passport: %s", reason)
         await self._receipt(device, grant, "denied", reason, merchant, amount_minor, currency, None)

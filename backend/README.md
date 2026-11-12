@@ -155,7 +155,7 @@ It sits on top of the existing protections: the daily cap, the RM100/USD100 phon
    ```
 
    Keep this key secret and stable: passports and receipts signed with an old key can only be verified with that old key.
-2. Apply migration `20261112090000_agent_passports.sql` (or rebuild with `supabase/schema.sql`). It adds the `agent_delegations` and `agent_receipts` tables.
+2. Apply migrations `20261112090000_agent_passports.sql` and `20261112090100_atomic_passport_orders.sql` before serving this backend. They add the grant/receipt tables and the guarded order RPC. For an already populated database, use incremental migrations rather than the standalone `supabase/schema.sql` rebuild.
 3. Restart the backend. `GET /.well-known/agent-passport` now lists one Ed25519 key.
 
 Without the key, passports cannot be issued (`503 passport_not_configured`); passports already issued are still enforced, but new receipts are stored unsigned.
@@ -200,7 +200,7 @@ One device has at most one live passport: revoke it before issuing a new one (`4
 | Passport revoked or expired | Refused; receipt `delegation_revoked` / `delegation_expired` |
 | Passport cannot be read (database error) | Refused with `internal_error`; nothing is created |
 
-A refusal reaches the device LLM (and the watch) as the tool error `delegation_denied` with a plain sentence, for example "This order is above the per-order limit in this device's agent passport." Receipt writes are best-effort: a failed write is logged and never blocks or fails an order.
+A refusal reaches the device LLM (and the watch) as the tool error `delegation_denied` with a plain sentence, for example "This order is above the per-order limit in this device's agent passport." The early check saves quote calls. The final check runs atomically inside `create_order_with_passport`, holding device/grant locks through order creation. Revocation or expiry during quoting refuses creation; a changed/new grant requires retrying under that grant. Receipt writes are best-effort: a failed write is logged and never blocks or fails an order.
 
 ### Verify a signature
 

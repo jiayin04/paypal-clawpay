@@ -50,8 +50,10 @@ class OrderRepository(Protocol):
         cart_sha256: str,
         items: Sequence[Mapping[str, Any]],
         total_minor: int,
+        delegation_id: str | None = None,
+        passport_required: bool = False,
     ) -> RpcResult:
-        """RPC create_order_from_quote -> data {order_id, deduplicated}."""
+        """Atomic create_order_with_passport -> data {order_id, deduplicated}."""
         ...
 
     async def get_for_user(self, order_id: str, user_id: str) -> OrderRecord | None: ...

@@ -451,7 +451,7 @@ Status: Implemented. See the backend README for behaviour and limits.
 - `GET /api/v1/delegations/receipts?limit=1..100` → `{"receipts":[{"id","delegation_id","device_id","order_id","decision","reason","merchant_code","amount_minor","currency","key_id","document","signature","created_at"}]}`.
 - `GET /.well-known/agent-passport` → `{"issuer":"clawpay","keys":[{"key_id","algorithm":"Ed25519","public_key","jwk"}],...}`.
 - Documents are canonical JSON (sorted keys, no whitespace, ASCII). `signature` is Ed25519 over the exact `document` bytes, base64url without padding. Purposes: `clawpay.delegation.v1`, `clawpay.receipt.v1`.
-- MCP `create_order` may return the tool error `delegation_denied`. Receipt `reason` values: `within_delegation`, `no_delegation`, `delegation_revoked`, `delegation_expired`, `merchant_not_delegated`, `currency_not_delegated`, `delegation_limit_exceeded`.
+- MCP `create_order` may return the tool error `delegation_denied`. Receipt `reason` values: `within_delegation`, `no_delegation`, `delegation_revoked`, `delegation_expired`, `delegation_changed`, `merchant_not_delegated`, `currency_not_delegated`, `delegation_limit_exceeded`. Order creation atomically rechecks the expected grant using device/grant locks, including expiry after lock waits.
 
 ## 9. Voice endpoints (optional)
 
