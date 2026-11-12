@@ -17,6 +17,15 @@ Apply these incrementally using your normal Supabase migration workflow; never r
 
 The Watch is a native app, not a VPS service. LLM, speech and catalog work use remote providers. A screenshot of aggregate CPU/memory does not identify which existing VPS process is busy. Inspect first; do not stop unrelated applications or resize the VPS based only on that screenshot.
 
+## Current rollout status (12 November 2026)
+
+- Public frontend: https://clawpay-dashboard.charleshor0311.workers.dev (demo mode; live backend bindings remain unset).
+- Backend: amd64 image built and container liveness checked locally. VPS SSH timed out on port 22; no remote services were changed.
+- Database: neither passport migration was pushed to the hosted database in this rollout.
+- Watch: Debug simulator build passed without signing. Simulator distribution uses the source/Xcode instructions below.
+
+The public dashboard currently demonstrates synthetic activity. It is not evidence that a live Watch-to-PayPal payment has been verified after these changes. To finish live deployment, restore VPS SSH access, select a stable HTTPS API hostname, apply the two incremental passport migrations, and run the final demo checks below. Keep secrets in private files.
+
 ## Submission requirements
 
 The [official rules](https://paypalaihackathon.devpost.com/rules) accept complete build/run instructions or a hosted functional demo. Public hosting is not mandatory. Submit a public source repository with an open-source license (this repo uses MIT), a public YouTube demo under three minutes showing the working app on its target platform, and instructions/access that remain available through judging. PayPal Sandbox must be central to the working experience. Clearly identify simulated fulfillment; a synthetic dashboard alone does not demonstrate a working payment flow.
@@ -106,18 +115,18 @@ Update the PayPal Sandbox return/cancel URLs to the stable API origin used by th
 
 ## Publish the frontend
 
-Wrangler 4+ is required. The repo now includes `frontend/wrangler.jsonc`, which builds the existing Hono ESM Worker. It serves both `/` and `/dashboard`; this is not a static-only upload that would lose `/api/*`.
+The project pins Wrangler 4.160.1 as a development dependency. The repo now includes `frontend/wrangler.jsonc`, which builds the existing Hono ESM Worker. It serves both `/` and `/dashboard`; this is not a static-only upload that would lose `/api/*`.
 
 ```sh
 cd frontend
 npm ci
-wrangler deploy --dry-run
-wrangler login
-wrangler deploy
-wrangler secret bulk ../deploy/.secrets/frontend.json
+npx wrangler deploy --dry-run
+npx wrangler login
+npx wrangler deploy
+npx wrangler secret bulk ../deploy/.secrets/frontend.json
 ```
 
-`wrangler login` is unnecessary if the CLI is already signed in. Use the returned `workers.dev` URL, or attach an owned custom domain. Until the three runtime bindings are supplied, the Worker truthfully offers demo mode. Verify `/api/config` reports `liveAvailable: true` after configuration. The existing Worker handles assets itself, so its requests count as Worker requests; do not assume the unlimited static-assets pricing applies to this bundle.
+`npx wrangler login` is unnecessary if the CLI is already signed in. Use the returned `workers.dev` URL, or attach an owned custom domain. Until the three runtime bindings are supplied, the Worker truthfully offers demo mode. Verify `/api/config` reports `liveAvailable: true` after configuration. The existing Worker handles assets itself, so its requests count as Worker requests; do not assume the unlimited static-assets pricing applies to this bundle.
 
 Use a dedicated judge Supabase account for live access, with its own paired test device and Sandbox wallet. Do not share an admin/service-role key or your personal Watch's token with judges. Public demo mode uses synthetic records and needs no privileged credentials.
 
