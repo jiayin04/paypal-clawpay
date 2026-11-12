@@ -322,6 +322,12 @@ struct ContentView: View {
             approveOnWatch = true
             return
         }
+        if env["CLAWPAY_RECORDING_FRESH_START"] == "1" {
+            // Clear the opening screen, preserving credentials and saved receipts.
+            lastOrderID = ""
+            newConversation()
+            return
+        }
         if let orderID = env["CLAWPAY_RECEIPT_ORDER_ID"], UUID(uuidString: orderID) != nil {
             lastOrderID = orderID
         }
@@ -722,7 +728,7 @@ private struct AgentActivityView: View {
                     Label(step.message, systemImage: step.status == "failed" ? "exclamationmark.circle" : "checkmark.circle")
                         .font(.footnote).fixedSize(horizontal: false, vertical: true)
                 }
-                Text("Summaries of actual tool actions. Delivery updates are simulated.")
+                Text("Completed agent actions and order updates.")
                     .font(.caption).foregroundStyle(.secondary)
             }.scenePadding(.horizontal)
         }.navigationTitle("Agent activity")
@@ -777,7 +783,7 @@ private struct ApprovalCard: View {
                 }.disabled(order.isConfirming)
                 if let address = delivery.address {
                     Text(address.displayLines).font(.caption).foregroundStyle(.secondary).privacySensitive()
-                    Text(address.source == .demo ? "Fictional address. No real delivery." : "Address stays on this watch. Delivery is simulated.")
+                    Text(address.source == .demo ? "Example address. No items will be shipped." : "Address stays on this watch. Delivery preview only.")
                         .font(.caption2).foregroundStyle(.secondary)
                 }
             }
@@ -818,7 +824,7 @@ private struct ApprovalCard: View {
                 }
                 if let address = delivery.address {
                     Divider()
-                    Label("Delivery simulation", systemImage: "shippingbox").font(.footnote.weight(.semibold))
+                    Label("Delivery preview", systemImage: "shippingbox").font(.footnote.weight(.semibold))
                     Text(address.label + "\n" + address.displayLines).font(.caption).foregroundStyle(.secondary).privacySensitive()
                     ForEach(Array(DemoDelivery.Stage.allCases.dropFirst().enumerated()), id: \.offset) { index, stage in
                         let done = DemoDelivery.Stage.allCases.firstIndex(of: delivery.stage)! >= index + 1
@@ -830,11 +836,11 @@ private struct ApprovalCard: View {
                             .font(.caption2).monospaced().foregroundStyle(.secondary)
                     }
                     if delivery.stage != .delivered {
-                        Button("Simulate next step", action: onAdvanceDelivery)
+                        Button("Next delivery update", action: onAdvanceDelivery)
                             .font(.footnote).frame(minHeight: 44)
                     }
                 }
-                Text("No retailer order was placed. Shipping updates are a local demo.")
+                Text("Preview only. No retailer order or shipment is created.")
                     .font(.caption2).foregroundStyle(.secondary)
                 Button("Refresh receipt", action: onRefresh).font(.footnote).frame(minHeight: 44)
             }
@@ -853,14 +859,14 @@ private struct ApprovalCard: View {
             // Amount and merchant above come from the signed payload, not the chat.
             Text(prepared.payload.merchantName)
                 .font(.footnote).foregroundStyle(.secondary)
-            Text("Sandbox payment · delivery is simulated").font(.caption2).foregroundStyle(.secondary)
+            Text("Sandbox payment · delivery preview").font(.caption2).foregroundStyle(.secondary)
             approveButton(title: "Confirm & pay", action: onConfirm)
             Button("Not now", role: .cancel, action: onCancel)
                 .font(.footnote)
                 .frame(minHeight: 44)
         case .awaiting:
             if approveOnWatch {
-                Text("Sandbox payment · delivery is simulated").font(.caption2).foregroundStyle(.secondary)
+                Text("Sandbox payment · delivery preview").font(.caption2).foregroundStyle(.secondary)
                 approveButton(title: "Review", action: onApprove).disabled(delivery.address == nil)
             } else {
                 Text("Hold your device’s button to pay.").font(.caption2).foregroundStyle(.white.opacity(0.85))

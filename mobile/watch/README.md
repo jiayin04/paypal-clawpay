@@ -32,7 +32,7 @@ The watch uses `POST /api/v1/assistant/messages/stream` for newline-delimited li
 
 Carts retain saved item names, quantities and line totals. Before watch approval, choose and confirm a **saved, manually entered, current-location or fictional demo address**; Review and Confirm & pay require that selection. Payment is still PayPal Sandbox. The receipt shows **Sandbox paid**, items, total, order reference and confirmed payment time. It refreshes automatically after approval. Pending payments poll status for up to ~24 seconds, with Check status available afterward. Receipt reads are authenticated and scoped to the original device, and never submit another payment. The latest receipt ID is saved locally and restored after reopening the app.
 
-After Paid, **Simulate next step** advances local delivery through Confirmed → Preparing → Shipped → Delivered, with a `SIM-` tracking reference. Address and stage are saved per order on this watch. These are local simulations, not merchant/carrier confirmations, and are not synchronized to the web dashboard. Addresses are kept locally in the watch Keychain and are not sent to the shopping agent or retailer. Current-location lookup sends coordinates to Apple only after the user opts in.
+After Paid, **Next delivery update** advances local delivery through Confirmed → Preparing → Shipped → Delivered, with a `SIM-` tracking reference. Address and stage are saved per order on this watch. These are local simulations, not merchant/carrier confirmations, and are not synchronized to the web dashboard. Addresses are kept locally in the watch Keychain and are not sent to the shopping agent or retailer. Current-location lookup sends coordinates to Apple only after the user opts in.
 
 Channel3's public checkout docs currently say **coming soon**: https://channel3.mintlify.dev/docs/checkout . The integration calls product search and live price endpoints, not a retailer purchase endpoint. The receipt explicitly reports `retailer_order_status=not_submitted` and `fulfillment_mode=simulated`.
 
@@ -214,3 +214,5 @@ uv run --offline pytest tests/integration/test_watch_agent_flow.py
 That check mocks the LLM, Channel3 API and PayPal API. It verifies the watch HTTP
 contract, both A2A agents, and payment only after a valid signature; it does not
 establish that external credentials, billing or live catalog responses work.
+
+For a clean recording take on a Debug simulator, launch with `SIMCTL_CHILD_CLAWPAY_RECORDING_FRESH_START=1`. This opens a new conversation and skips automatic receipt restoration for that launch. It preserves device credentials, backend orders, payment records, and saved receipt addresses. The app labels local fulfillment as a delivery preview; Sandbox payment status and the no-shipment notice remain visible.
