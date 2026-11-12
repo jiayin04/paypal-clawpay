@@ -11,7 +11,7 @@ page.on("pageerror", (error) => errors.push(error.message));
 await page.goto("http://127.0.0.1:8787/dashboard");
 await page.getByRole("heading", { name: "Overview", exact: true }).waitFor();
 await page.screenshot({
-    path: "../.impeccable/review/desktop.png",
+    path: "test-results/ui/desktop.png",
     fullPage: true,
 });
 const main = page.getByRole("main");
@@ -76,7 +76,7 @@ for (const name of [
     await page.getByRole("button", { name: "Reset", exact: true }).click();
 }
 await page.screenshot({
-    path: "../.impeccable/review/lab.png",
+    path: "test-results/ui/lab.png",
     fullPage: true,
 });
 for (const width of [390, 768, 1024, 1280, 1440]) {
@@ -101,7 +101,7 @@ for (const width of [390, 768, 1024, 1280, 1440]) {
         );
         if (width === 390 && name === "Overview")
             await page.screenshot({
-                path: "../.impeccable/review/mobile.png",
+                path: "test-results/ui/mobile.png",
                 fullPage: true,
             });
         if (width === 390 && name === "Orders") {
@@ -116,7 +116,7 @@ for (const width of [390, 768, 1024, 1280, 1440]) {
                 "Mobile dialog fits",
             );
             await page.screenshot({
-                path: "../.impeccable/review/mobile-order.png",
+                path: "test-results/ui/mobile-order.png",
                 fullPage: true,
             });
             await page.keyboard.press("Escape");
@@ -220,7 +220,7 @@ assert.equal(
     0,
 );
 await livePage.screenshot({
-    path: "../.impeccable/review/live-initial-error.png",
+    path: "test-results/ui/live-initial-error.png",
     fullPage: true,
 });
 fail = false;
@@ -235,7 +235,7 @@ await livePage
     .filter({ hasText: "Test backend offline" })
     .waitFor();
 await livePage.screenshot({
-    path: "../.impeccable/review/live-error.png",
+    path: "test-results/ui/live-error.png",
     fullPage: true,
 });
 fail = false;

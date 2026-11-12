@@ -1,27 +1,30 @@
-# Remaining work
+# Remaining validation and deployment work
 
-Backend phases 0–4 are implemented and covered by mocked tests. The work below is still required for a real device demo or deployment; the code refactor does not verify external services or hardware.
+The repository contains the Watch voice flow, dashboard, agent passports, signed device approvals, and PayPal Sandbox orchestration. Automated tests use fakes. Keep implementation status separate from validation against external services and physical hardware.
 
-## Before the real demo, in order
+## Before claiming a hosted end-to-end payment
 
-- [ ] **Database:** since the tables were dropped, apply [schema.sql](../supabase/schema.sql), then [seed.sql](../supabase/seed.sql) using the [rebuild guide](database-rebuild.md). Reconcile hosted migration history afterward. For an intact database, use incremental migrations instead. Run the pgTAP suites against an operator-controlled database, including RLS/column grants, concurrency and exactly-once accounting. Static SQL tests are not database execution. Follow [setup](setup.md#a3-apply-migrations-to-the-hosted-supabase-project--works-now).
-- [ ] **Credentials and Supabase Auth:** configure server-only secrets, publishable key, pepper and admin token. Check readiness, real JWT/JWKS (or configured HS256) and two-user row isolation on the hosted project. No real secrets belong on the device except its scoped tokens.
-- [ ] **PayPal Sandbox:** validate MYR with the Malaysian accounts, setup/vault-without-purchase, masked-wallet display and merchant-initiated charging after approval. Verify completion, decline, pending/timeout recovery and refunds. If MYR is unavailable, use USD consistently. The default live smoke only tests OAuth/setup, not a payment.
-- [ ] **Idempotency assumptions:** confirm PayPal Request-Id retention and duplicate-invoice enforcement for this Sandbox merchant before increasing the 900-second replay window. Verify webhook REVERSED resource shapes and payer-email availability against actual deliveries.
-- [ ] **ESP-Claw firmware:** confirm the board/flash/PSRAM, implement/build the separate MCP bearer patch and private `cap_clawpay` C task, generate/register the device P-256 key, store `cpd_` privately and configure `cpl_` for the proxy. The stock web-flashed image does not provide the payment-signing component.
-- [ ] **Complete device test:** run the backend with one worker, open the HTTPS tunnel, update `PUBLIC_BASE_URL`/device URLs, link your own Sandbox wallet, search/create an order ≤RM100, hold the physical button to sign and confirm payment plus spending/dashboard history. Test a lost connection, replay, revocation, expiry, cap rejection and uncertain-payment recovery.
-- [ ] **LLM provider:** configure the upstream base/key/model and exercise the real ESP-Claw request pattern, tool calls, streaming modes, model compatibility, usage reporting and budget rejection. Remove any direct upstream key from the device.
-- [ ] **Optional stable webhook URL:** configure the Sandbox webhook id/events and test authentic, duplicate and out-of-order deliveries. Quick tunnels can use polling alone.
+- **Reachable backend.** Restore VPS SSH access and deploy the API and PayPal agent with a stable HTTPS origin. The current public Pages site is configured for demo mode. See the [deployment guide](../../deploy/README.md).
+- **Incremental database migrations.** Inspect hosted migration history and apply missing migrations, including `20261112090000_agent_passports.sql` and `20261112090100_atomic_passport_orders.sql`. Do not run the standalone rebuild schema over a populated database. Run pgTAP/RLS and concurrent reservation checks on a test database.
+- **Owner and device access.** Pair a dedicated test Watch, confirm its signing key, link its owner's Sandbox wallet, and verify two-user isolation. Keep the existing token pepper and signing key stable.
+- **Provider integration.** Validate the configured model/tool loop, Fish Audio STT and streamed TTS, and Channel3 catalog/price refresh using dedicated test requests.
+- **Sandbox payment outcomes.** Check completion, decline, uncertain timeout/reconciliation, cancellation, and refunds. Confirm provider currency support, request-id retention, and duplicate-invoice behavior before increasing replay windows. The opt-in smoke test alone does not perform a full payment.
+- **Frontend live mode.** Only after the API is reachable, configure the Pages runtime API origin and public Supabase settings, redeploy, verify `/api/config`, and sign in as the paired device's owner.
+- **Webhook delivery, if enabled.** Verify authentic, duplicate, and out-of-order notifications against actual Sandbox payloads. Keep polling reconciliation enabled when webhooks are unavailable.
 
-## Before a wider or production deployment
+## Hardware validation
 
-- [ ] Perform a payment/security review and live SQL validation. The current scope is **Sandbox only**; production PayPal is rejected by configuration.
-- [ ] Define operational ownership for exhausted/uncertain payments, reconciliation backlog, provider incidents and manual resolution. No admin-resolution API exists today.
-- [ ] Put rate limits, daily LLM budgets and reconciliation throttles in shared storage before using multiple workers. Current limits reset on restart and concurrent requests can overshoot completed-usage accounting.
-- [ ] Add deployment-specific ingress controls, readiness protection, monitoring/alerts, backup/restore validation and secret rotation procedures.
-- [ ] Add the team's chosen CI, formatter/linter and static type-check gates with pinned tooling. No new tooling packages or provider-specific CI were installed during this cleanup; offline tests and structural checks run with the existing lockfile.
-- [ ] Review, stage and commit the implementation, tracked docs and refactor. No commit or remote publication was made by this task.
+The simulator is the submission's initial Watch route. Physical-watch microphone accuracy, Siri invocation, location permissions, and Secure Enclave presence checks require a real device. ESP-Claw signing firmware is a separate project; the stock firmware does not implement the required payment-signing component.
 
-## Deferred product scope, not unfinished phase 4 backend work
+## Deliberate product boundaries
 
-Dashboard frontend, phone approval for orders above 10000 minor units, voice, external AP2 SDK/sample compatibility and sponsor integrations remain separate scope decisions. The current gadget-cart mandate records the verified signature, and refunds deliberately do not restore daily spending capacity. See [implementation decisions](implementation-plan.md#19-decisions-log).
+- PayPal is Sandbox-only; production configuration is rejected.
+- Shipping/address progress is simulated locally on the Watch; no Channel3 retailer checkout or carrier booking is connected.
+- Signed user-intent budgets and full AP2 interoperability are future work. Spoken budget text is not itself a signed spending policy.
+- Person-to-person transfers, scheduled autonomous purchasing, and phone approval above the configured threshold are not implemented.
+
+## Before wider use
+
+Complete a payment/security review and live SQL validation. Move process-local rate limits, LLM budgets, and reconciliation throttles into shared storage before using multiple API workers. Define operational ownership for uncertain payments, exhausted attempts, provider incidents, and manual recovery.
+
+Use the [verification guide](verification.md) for repeatable local checks and the [architecture guide](architecture.md) for contribution rules. Historical design decisions remain in the [archived implementation plan](archive/implementation-plan.md#19-decisions-log).

@@ -8,7 +8,7 @@ trim_trailing_whitespace = true
 indent_style = space
 indent_size = 4
 
-[*.{md,yml,yaml,toml,json}]
+[*.{md,yml,yaml,toml,json,jsonc}]
 indent_size = 2
 
 [*.md]

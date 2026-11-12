@@ -4,7 +4,7 @@ Vite + React + TypeScript SPA with a read-only Hono API proxy. Includes a respon
 
 ## Run locally
 
-Use Node 24+ and start the existing Python backend on port 8000.
+Use Node 24+. The sample demo runs without a backend. For live owner activity, also start the Python backend on port 8000 and configure the public Supabase settings.
 
 ```sh
 cd frontend
@@ -44,7 +44,7 @@ npm run deploy:pages
 
 This builds the same Hono Worker into `dist-pages/_worker.js` using Pages advanced mode. The Worker serves both the SPA and `/api/*`, retaining the read-only proxy and security headers. The Pages configuration lives in `pages/wrangler.jsonc`; generated output is ignored. The original Workers URL remains available as a separate deployment and is not updated by this command.
 
-`npm run build` also produces `dist/server/index.js`, an ESM Hono Worker containing only built public assets. `.openai/hosting.json` stores the private Sites project identity. There are no secrets in the artifact. Runtime settings for hosted live mode are `CLAWPAY_API_ORIGIN` (stable HTTPS backend), `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`. Without these, the hosted site offers demo mode and explains that live mode is not configured. No local loopback backend is reachable from hosting.
+`npm run build` also produces `dist/server/index.js`, an ESM Hono Worker containing only built public assets. There are no secrets in the artifact. Runtime settings for hosted live mode are `CLAWPAY_API_ORIGIN` (stable HTTPS backend), `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`. Without these, the hosted site offers demo mode and explains that live mode is not configured. No local loopback backend is reachable from hosting.
 
 ## Verify
 
@@ -55,4 +55,4 @@ npm run build
 npm run test:ui
 ```
 
-Proxy tests verify owner auth forwarding, endpoint allowlists, method restrictions, no-store responses and safe upstream failures. Browser checks cover five screens at five viewport widths, order traces, search/filter empty states, three scenario replays, mocked owner sign-in, live empty/error/retry states, account switching with failed reads, and sign-out broadcasts. They don't prove a real owner's credential or hosted backend availability. Screenshots are saved under `../.impeccable/review/`.
+Proxy tests verify owner auth forwarding, endpoint allowlists, method restrictions, no-store responses and safe upstream failures. Browser checks cover five screens at five viewport widths, order traces, search/filter empty states, three scenario replays, mocked owner sign-in, live empty/error/retry states, account switching with failed reads, and sign-out broadcasts. They don't prove a real owner's credential or hosted backend availability. Screenshots are saved under `test-results/ui/`.

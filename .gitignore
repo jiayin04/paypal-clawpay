@@ -38,6 +38,10 @@ xcuserdata/
 node_modules/
 frontend/dist/
 *.tsbuildinfo
-.impeccable/review/
 .wrangler/
 deploy/.secrets/
+
+# Local UI verification and media production artifacts
+frontend/test-results/
+frontend/playwright-report/
+outputs/
