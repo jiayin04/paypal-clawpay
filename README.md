@@ -4,6 +4,7 @@
   <p><strong>Verified authorization for agent-led commerce.</strong></p>
   <p>Speak on your watch. Review the cart. Authorize the payment. Follow the outcome.</p>
   <p>
+    <a href="https://youtu.be/zHyAtDuBJ6Q"><strong>▶ Watch the demo</strong></a> ·
     <a href="https://clawpay.pages.dev/">Website</a> ·
     <a href="https://clawpay.pages.dev/dashboard">Try the dashboard</a> ·
     <a href="#run-locally">Run locally</a> ·
@@ -12,6 +13,7 @@
 </div>
 
 ![ClawPay landing page](docs/media/landing.png)
+
 
 ## What we're building
 
@@ -27,6 +29,14 @@ The key question is **“Was this agent allowed to make this transaction, and wh
 ClawPay uses its own authorization format today. AP2 interoperability and production payment certification are not claimed.
 
 ## See the experience
+
+### Demo video
+
+<a href="docs/media/demo.mp4"><img src="docs/media/demo-cover.jpg" width="640" alt="ClawPay demo: a Channel3 water bottle paid in PayPal Sandbox from Apple Watch. Click to play."></a>
+
+**[▶ Play the 69-second demo](docs/media/demo.mp4)** (opens GitHub's video player) · [Watch on YouTube](https://youtu.be/zHyAtDuBJ6Q)
+
+From voice request to Channel3 choices, cart review on the Watch, signed approval, and a PayPal Sandbox payment receipt.
 
 ### Voice and approval on Apple Watch
 
