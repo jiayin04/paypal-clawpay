@@ -75,7 +75,7 @@ def test_order_id_normalised_lowercase() -> None:
 def test_error_messages_table_complete() -> None:
     codes = {"invalid_arguments", "rate_limited", "merchant_unavailable", "unknown_sku", "quote_invalid",
              "currency_not_supported", "no_payment_method", "daily_limit_exceeded", "phone_approval_unavailable",
-             "not_found", "internal_error"}
+             "delegation_denied", "not_found", "internal_error"}
     assert set(mcp_tools.ERROR_MESSAGES) == codes
     assert all(mcp_tools.ERROR_MESSAGES.values())
 

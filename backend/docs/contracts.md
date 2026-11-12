@@ -442,6 +442,17 @@ Verification splices the exact raw received event bytes into the PayPal verify b
 
 CAPTURE COMPLETED/PENDING/DENIED/DECLINED resolves by capture id, related order id, then UUID custom_id. REFUNDED resolves its parent capture from `links[rel=up]` then custom_id. REVERSED uses that lookup plus capture id fallback; both only audit refunds. CHECKOUT.ORDER.COMPLETED resolves the provider order id and embedded capture. Completed amount/currency mismatch →uncertain + `payment.conflicting_result`; out-of-order PENDING after completion cannot undo PAID. Webhooks can resolve exhausted attempts. Polling remains primary; stable webhook URL is optional with quick tunnels.
 
+## Agent passports (lite)
+
+Status: Implemented. See the backend README for behaviour and limits.
+
+- `POST /api/v1/delegations` (owner JWT) body `{"device_id","merchants":[1..10 merchant codes],"max_order_minor":1..10000000 (≤ DAILY_SPENDING_LIMIT_MINOR),"expires_in_hours":1..720 (default 168)}` → `201` with `id, device_id, status, merchants, max_order_minor, currency, expires_at, revoked_at, created_at, key_id, document, signature`. Errors: `404 not_found` (device not the caller's), `409 delegation_exists` / `device_revoked`, `422 validation_error`, `503 passport_not_configured`.
+- `GET /api/v1/delegations` → `{"delegations":[...]}` with `status` `active|expired|revoked`. `DELETE /api/v1/delegations/{id}` → `200 {"id","status":"revoked"}` (idempotent); foreign or unknown → `404 not_found`.
+- `GET /api/v1/delegations/receipts?limit=1..100` → `{"receipts":[{"id","delegation_id","device_id","order_id","decision","reason","merchant_code","amount_minor","currency","key_id","document","signature","created_at"}]}`.
+- `GET /.well-known/agent-passport` → `{"issuer":"clawpay","keys":[{"key_id","algorithm":"Ed25519","public_key","jwk"}],...}`.
+- Documents are canonical JSON (sorted keys, no whitespace, ASCII). `signature` is Ed25519 over the exact `document` bytes, base64url without padding. Purposes: `clawpay.delegation.v1`, `clawpay.receipt.v1`.
+- MCP `create_order` may return the tool error `delegation_denied`. Receipt `reason` values: `within_delegation`, `no_delegation`, `delegation_revoked`, `delegation_expired`, `delegation_changed`, `merchant_not_delegated`, `currency_not_delegated`, `delegation_limit_exceeded`. Order creation atomically rechecks the expected grant using device/grant locks, including expiry after lock waits.
+
 ## 9. Voice endpoints (optional)
 
 Status: Proposed — stretch. Auth: device token.

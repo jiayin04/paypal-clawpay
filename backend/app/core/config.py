@@ -57,6 +57,7 @@ _OPTIONAL_FIELDS = (
     "metrics_token",
     "paypal_agent_token",
     "channel3_api_key",
+    "agent_passport_signing_key",
     "channel3_agent_endpoint",
     "fish_audio_api_key",
     "fish_audio_voice_id",
@@ -134,6 +135,11 @@ class Settings(BaseSettings):
     client_ip_header: Literal["none", "cf-connecting-ip", "x-forwarded-for-last"] = "none"
     device_owner_registration_enabled: bool = False
     device_token_pepper: SecretStr | None = None  # HMAC pepper for hashing device tokens
+
+    # Agent passports: Ed25519 issuer seed (32 bytes, base64url) signs grants and receipts.
+    agent_passport_signing_key: SecretStr | None = None
+    # true = a device without any grant cannot order (default: only devices that were given a grant are governed)
+    agent_passport_required: bool = False
 
     # Merchant agents and orders
     merchant_agent_timeout_seconds: float = Field(8.0, gt=0, le=15)
@@ -295,6 +301,18 @@ class Settings(BaseSettings):
             raise ValueError("PAYPAL_AGENT_TOKEN must be at least 32 characters")
         if self.paypal_agent_endpoint and agent_token is None:
             raise ValueError("PAYPAL_AGENT_TOKEN must be set when PAYPAL_AGENT_ENDPOINT is set")
+        seed = self.agent_passport_signing_key
+        if seed is not None:
+            import base64
+            import binascii
+
+            raw = seed.get_secret_value()
+            try:
+                decoded = base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4))
+            except (binascii.Error, ValueError):
+                decoded = b""
+            if len(decoded) != 32:
+                raise ValueError("AGENT_PASSPORT_SIGNING_KEY must be 32 random bytes, base64url-encoded")
         metrics = self.metrics_token
         if metrics is not None and len(metrics.get_secret_value()) < _MIN_INTERNAL_TOKEN_LENGTH:
             raise ValueError("METRICS_TOKEN must be at least 32 characters")

@@ -8,6 +8,7 @@ from typing import Any, TYPE_CHECKING
 
 from app.repositories.ports.common import RpcResult
 from app.repositories.ports.orders import OrderItemRecord, OrderRecord
+from app.domain.passport import Grant, check_merchant, check_amount
 
 
 if TYPE_CHECKING:
@@ -42,7 +43,8 @@ class FakeOrderRepository:
 
     async def create_from_quote(self, *, user_id: str, device_id: str, merchant_code: str, currency: str,
                                 quote_expires_at: datetime, quote_reference: str | None, cart_sha256: str,
-                                items: Sequence[Mapping[str, Any]], total_minor: int) -> RpcResult:
+                                items: Sequence[Mapping[str, Any]], total_minor: int,
+                                delegation_id: str | None = None, passport_required: bool = False) -> RpcResult:
         s = self.s
         async with s.lock:
             await s._enter("create_order_from_quote")
@@ -54,6 +56,17 @@ class FakeOrderRepository:
             if merchant is None:
                 return RpcResult(False, "merchant_unavailable", {"order_id": None, "deduplicated": False})
             now = s.now()
+            rows = [g for g in s.delegations if g["device_id"] == device_id and g["user_id"] == user_id]
+            row = max(rows, key=lambda g: (g["revoked_at"] is None, g["created_at"], g["id"])) if rows else None
+            grant = Grant(row["id"], tuple(row["merchants"]), row["max_order_minor"], row["currency"],
+                          row["expires_at"], row["revoked_at"]) if row else None
+            reason = check_merchant(grant, merchant_code, now) if grant or passport_required or delegation_id else None
+            if not reason and grant and grant.id != delegation_id:
+                reason = "delegation_changed"
+            if not reason and grant:
+                reason = check_amount(grant, total_minor, currency)
+            if reason:
+                return RpcResult(False, reason, {"order_id": None, "deduplicated": False})
             candidates = [
                 o for o in s.orders.values()
                 if o["device_id"] == device_id and o["cart_sha256"] == cart_sha256
